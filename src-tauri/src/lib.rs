@@ -34,7 +34,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_servers,
-            commands::list_minecraft_versions,
+            commands::list_loader_versions,
             commands::create_server,
             commands::delete_server,
             commands::start_server,

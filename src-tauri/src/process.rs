@@ -385,13 +385,8 @@ fn spawn_java_process(
     server_dir: &Path,
     java_executable: &Path,
 ) -> AppResult<Child> {
-    let max_heap_flag = format!("-Xmx{}M", config.memory_mb);
-    let min_heap_flag = format!("-Xms{}M", config.memory_mb);
-
-    let mut command = Command::new(java_executable);
+    let mut command = build_launch_command(config, java_executable)?;
     command
-        .args([&max_heap_flag, &min_heap_flag])
-        .args(["-jar", SERVER_JAR_NAME, "nogui"])
         .current_dir(server_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -401,6 +396,41 @@ fn spawn_java_process(
 
     let child = command.spawn()?;
     Ok(child)
+}
+
+/// The process to launch: either the user's custom start command, or the
+/// standard `java [flags] -jar server.jar [nogui]` invocation.
+fn build_launch_command(config: &ServerConfig, java_executable: &Path) -> AppResult<Command> {
+    if let Some(custom_command) = &config.start_command {
+        return parse_custom_command(custom_command);
+    }
+
+    let max_heap_flag = format!("-Xmx{}M", config.memory_mb);
+    let min_heap_flag = format!("-Xms{}M", config.memory_mb);
+
+    let mut command = Command::new(java_executable);
+    command.args([&max_heap_flag, &min_heap_flag]);
+    if let Some(java_args) = &config.java_args {
+        command.args(java_args.split_whitespace());
+    }
+    command.args(["-jar", SERVER_JAR_NAME]);
+    if !config.loader.is_proxy() {
+        command.arg("nogui");
+    }
+    Ok(command)
+}
+
+/// Splits a custom start command on whitespace (no quoting support yet).
+fn parse_custom_command(custom_command: &str) -> AppResult<Command> {
+    let mut parts = custom_command.split_whitespace();
+    let Some(program) = parts.next() else {
+        let message = "the custom start command is empty".to_string();
+        return Err(AppError::InvalidInput(message));
+    };
+
+    let mut command = Command::new(program);
+    command.args(parts);
+    Ok(command)
 }
 
 fn take_pipe<T>(pipe: Option<T>) -> AppResult<T> {

@@ -1,9 +1,41 @@
 //! Server software installers. Each submodule knows how to obtain the server
 //! jar for one loader; shared download plumbing lives here.
 
+pub mod bungee;
+pub mod fabric;
+pub mod paper;
+pub mod purpur;
 pub mod vanilla;
 
 use std::path::Path;
+
+use crate::error::{AppError, AppResult};
+use crate::servers::Loader;
+
+/// Installs the chosen server software into `server_dir` as `server.jar`.
+pub async fn install(
+    client: &reqwest::Client,
+    loader: Loader,
+    mc_version: &str,
+    server_dir: &Path,
+    report_progress: &ProgressCallback,
+) -> AppResult<()> {
+    match loader {
+        Loader::Vanilla => vanilla::install(client, mc_version, server_dir, report_progress).await,
+        Loader::Paper | Loader::Folia | Loader::Velocity => {
+            paper::install(client, loader, mc_version, server_dir, report_progress).await
+        }
+        Loader::Purpur => purpur::install(client, mc_version, server_dir, report_progress).await,
+        Loader::Fabric => fabric::install(client, mc_version, server_dir, report_progress).await,
+        Loader::BungeeCord => bungee::install(client, server_dir, report_progress).await,
+        unsupported => {
+            let message = format!(
+                "{unsupported:?} doesn't have an automatic installer yet — pick another type, or set it up manually with a custom start command"
+            );
+            Err(AppError::InvalidInput(message))
+        }
+    }
+}
 
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -13,10 +45,10 @@ use sha2::digest::Digest as Sha256Digest;
 use sha2::Sha256;
 use tokio::io::AsyncWriteExt;
 
-use crate::error::{AppError, AppResult};
-
-/// Which checksum a download is verified against.
+/// Which checksum a download is verified against. `None` is for sources
+/// that publish no hash (HTTPS is the only integrity check there).
 pub enum ExpectedChecksum<'a> {
+    None,
     Sha1(&'a str),
     Sha256(&'a str),
 }
@@ -96,6 +128,7 @@ pub async fn download_file(
         match expected {
             ExpectedChecksum::Sha1(_) => sha1_hasher.update(&chunk),
             ExpectedChecksum::Sha256(_) => sha256_hasher.update(&chunk),
+            ExpectedChecksum::None => {}
         }
         file.write_all(&chunk).await?;
         downloaded_bytes += chunk.len() as u64;
@@ -104,6 +137,9 @@ pub async fn download_file(
     file.flush().await?;
 
     let (expected_hex, actual_hex) = match expected {
+        ExpectedChecksum::None => {
+            return Ok(());
+        }
         ExpectedChecksum::Sha1(expected_hex) => (expected_hex, hex::encode(sha1_hasher.finalize())),
         ExpectedChecksum::Sha256(expected_hex) => {
             (expected_hex, hex::encode(sha256_hasher.finalize()))

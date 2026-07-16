@@ -3,7 +3,23 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
-export type Loader = "vanilla" | "paper" | "fabric" | "forge" | "neoforge";
+export type Loader =
+  | "vanilla"
+  | "bds"
+  | "paper"
+  | "purpur"
+  | "spigot"
+  | "folia"
+  | "fabric"
+  | "neoforge"
+  | "forge"
+  | "quilt"
+  | "arclight"
+  | "mohist"
+  | "velocity"
+  | "bungeecord";
+
+export const PROXY_LOADERS: Loader[] = ["velocity", "bungeecord"];
 
 export type ServerStatus = "stopped" | "starting" | "running" | "stopping" | "crashed";
 
@@ -16,6 +32,8 @@ export interface ServerConfig {
   javaPath: string | null;
   dir: string;
   backupsDir: string | null;
+  javaArgs: string | null;
+  startCommand: string | null;
   createdAtUnix: number;
 }
 
@@ -44,9 +62,12 @@ export interface CreateServerRequest {
   mcVersion: string;
   loader: Loader;
   memoryMb: number;
+  port: number;
   acceptEula: boolean;
   /** Parent folder for the server; null uses the configured default. */
   locationParent: string | null;
+  javaArgs: string | null;
+  startCommand: string | null;
 }
 
 export interface AppSettings {
@@ -101,7 +122,8 @@ export interface UpdateServerRequest {
 
 export const api = {
   listServers: () => invoke<ServerConfig[]>("list_servers"),
-  listMinecraftVersions: () => invoke<McVersion[]>("list_minecraft_versions"),
+  listLoaderVersions: (loader: Loader) =>
+    invoke<McVersion[]>("list_loader_versions", { loader }),
   createServer: (request: CreateServerRequest) =>
     invoke<ServerConfig>("create_server", { request }),
   deleteServer: (serverId: string) => invoke<void>("delete_server", { serverId }),

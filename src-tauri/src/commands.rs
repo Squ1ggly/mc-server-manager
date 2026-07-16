@@ -29,22 +29,17 @@ pub async fn list_servers(state: State<'_, AppState>) -> AppResult<Vec<ServerCon
 }
 
 #[tauri::command]
-pub async fn list_minecraft_versions(
-    state: State<'_, AppState>,
-) -> AppResult<Vec<vanilla::McVersion>> {
-    let versions = vanilla::list_versions(&state.http).await?;
-    Ok(versions)
-}
-
-#[tauri::command]
 pub async fn create_server(
     app: AppHandle,
     state: State<'_, AppState>,
     request: CreateServerRequest,
 ) -> AppResult<ServerConfig> {
     request.validate()?;
-    if request.loader != Loader::Vanilla {
-        let message = "only vanilla servers are supported so far".to_string();
+    if !request.loader.is_installable() {
+        let message = format!(
+            "{:?} doesn't have an automatic installer yet — it's on the roadmap!",
+            request.loader
+        );
         return Err(AppError::InvalidInput(message));
     }
 
@@ -57,8 +52,9 @@ pub async fn create_server(
 
     let report_progress =
         installers::progress_event_reporter(app, config.id.clone(), "download-server-jar");
-    let install_result = vanilla::install(
+    let install_result = installers::install(
         &state.http,
+        request.loader,
         &config.mc_version,
         &server_dir,
         &report_progress,
@@ -69,12 +65,40 @@ pub async fn create_server(
         return Err(error);
     }
 
-    servers::write_eula_acceptance(&server_dir)?;
+    if !request.loader.is_proxy() {
+        servers::write_eula_acceptance(&server_dir)?;
+        let port_property = vec![Property {
+            key: "server-port".to_string(),
+            value: request.port.to_string(),
+        }];
+        properties::write(&server_dir, &port_property)?;
+    }
 
     let mut registry = state.registry.lock().await;
     registry.add(config.clone());
     registry.save(&state.registry_path())?;
     Ok(config)
+}
+
+/// Available versions for one server software, newest first.
+#[tauri::command]
+pub async fn list_loader_versions(
+    state: State<'_, AppState>,
+    loader: Loader,
+) -> AppResult<Vec<vanilla::McVersion>> {
+    match loader {
+        Loader::Vanilla => vanilla::list_versions(&state.http).await,
+        Loader::Paper | Loader::Folia | Loader::Velocity => {
+            installers::paper::list_versions(&state.http, loader).await
+        }
+        Loader::Purpur => installers::purpur::list_versions(&state.http).await,
+        Loader::Fabric => installers::fabric::list_versions(&state.http).await,
+        Loader::BungeeCord => Ok(installers::bungee::list_versions()),
+        unsupported => {
+            let message = format!("{unsupported:?} doesn't have an automatic installer yet");
+            Err(AppError::InvalidInput(message))
+        }
+    }
 }
 
 #[tauri::command]

@@ -8,15 +8,47 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
-/// Which server software a server runs.
+/// Which server software a server runs. Not every variant has an automatic
+/// installer yet — see [`Loader::is_installable`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Loader {
     Vanilla,
+    Bds,
     Paper,
+    Purpur,
+    Spigot,
+    Folia,
     Fabric,
-    Forge,
     NeoForge,
+    Forge,
+    Quilt,
+    Arclight,
+    Mohist,
+    Velocity,
+    BungeeCord,
+}
+
+impl Loader {
+    /// Network proxies front game servers: no world, no EULA, no
+    /// `server.properties`, and no `nogui` argument.
+    pub fn is_proxy(self) -> bool {
+        matches!(self, Loader::Velocity | Loader::BungeeCord)
+    }
+
+    /// Whether Blockparty can download and set this software up itself.
+    pub fn is_installable(self) -> bool {
+        matches!(
+            self,
+            Loader::Vanilla
+                | Loader::Paper
+                | Loader::Purpur
+                | Loader::Folia
+                | Loader::Fabric
+                | Loader::Velocity
+                | Loader::BungeeCord
+        )
+    }
 }
 
 /// Lifecycle state of a server process.
@@ -49,6 +81,12 @@ pub struct ServerConfig {
     /// `backups` folder inside the server directory.
     #[serde(default)]
     pub backups_dir: Option<PathBuf>,
+    /// Extra JVM flags inserted before `-jar` (whitespace-separated).
+    #[serde(default)]
+    pub java_args: Option<String>,
+    /// Full launch command override; replaces the java invocation entirely.
+    #[serde(default)]
+    pub start_command: Option<String>,
     pub created_at_unix: u64,
 }
 
@@ -105,12 +143,17 @@ pub struct CreateServerRequest {
     pub mc_version: String,
     pub loader: Loader,
     pub memory_mb: u32,
+    /// The port the server listens on, written to `server.properties`
+    /// before the first start. Ignored for proxies (their configs differ).
+    pub port: u16,
     /// The user must explicitly accept the Minecraft EULA
     /// (https://aka.ms/MinecraftEULA) before we write `eula=true`.
     pub accept_eula: bool,
     /// Parent directory to create the server folder in; `None` uses the
     /// configured default location.
     pub location_parent: Option<PathBuf>,
+    pub java_args: Option<String>,
+    pub start_command: Option<String>,
 }
 
 impl CreateServerRequest {
@@ -119,12 +162,16 @@ impl CreateServerRequest {
         if trimmed_name.is_empty() {
             return Err(AppError::InvalidInput("server name is empty".to_string()));
         }
-        if !self.accept_eula {
+        if !self.accept_eula && !self.loader.is_proxy() {
             let message = "the Minecraft EULA must be accepted to create a server".to_string();
             return Err(AppError::InvalidInput(message));
         }
         if self.memory_mb < MINIMUM_MEMORY_MB {
             let message = format!("memory must be at least {MINIMUM_MEMORY_MB} MB");
+            return Err(AppError::InvalidInput(message));
+        }
+        if self.port < 1024 {
+            let message = "pick a port of 1024 or higher".to_string();
             return Err(AppError::InvalidInput(message));
         }
         Ok(())
@@ -147,8 +194,19 @@ pub fn new_server_config(request: &CreateServerRequest, dir: PathBuf) -> ServerC
         java_path: None,
         dir,
         backups_dir: None,
+        java_args: normalized_option(&request.java_args),
+        start_command: normalized_option(&request.start_command),
         created_at_unix,
     }
+}
+
+/// Trims a free-text option; whitespace-only input means "not set".
+fn normalized_option(value: &Option<String>) -> Option<String> {
+    let trimmed = value.as_deref().map(str::trim).unwrap_or("");
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
 }
 
 /// Folder names Windows refuses regardless of extension.

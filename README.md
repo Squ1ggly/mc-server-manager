@@ -28,7 +28,9 @@ cross-platform alternative to tools like MC Server Soft.
 - [x] Online player list, kick/ban/op, whitelist editor, `server.properties` editor
 - [x] Backups (manual + scheduled) and a task scheduler
 - [x] Live CPU / memory / uptime dashboard
-- [ ] Paper / Fabric / Forge / NeoForge installers
+- [x] Paper / Purpur / Folia / Fabric / Velocity / BungeeCord installers
+- [x] Port selection and custom JVM args / start command per server
+- [ ] Forge / NeoForge / Quilt / Spigot / Arclight / Mohist / Bedrock installers
 
 ## 🚀 Getting started
 

@@ -116,7 +116,11 @@ fn message_body(line: &str) -> Option<&str> {
 }
 
 fn is_ready_message(message: &str) -> bool {
-    message.starts_with("Done (") && message.contains(")!")
+    let game_server_ready = message.starts_with("Done (") && message.contains(")!");
+    // BungeeCord (and some proxies) report readiness by announcing their
+    // listener instead of a "Done" line.
+    let proxy_ready = message.starts_with("Listening on ");
+    game_server_ready || proxy_ready
 }
 
 /// Matches messages of the exact shape `<name><suffix>` where the name is a

@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
-  import { api, type McVersion } from "../api";
+  import { api, PROXY_LOADERS, type Loader, type McVersion } from "../api";
   import {
     MEMORY_MAX_MB,
     MEMORY_MIN_MB,
@@ -23,10 +23,65 @@
 
   let { open, onclose }: Props = $props();
 
+  interface CatalogEntry {
+    value: Loader;
+    label: string;
+    available: boolean;
+  }
+
+  const LOADER_CATALOG: { category: string; entries: CatalogEntry[] }[] = [
+    {
+      category: "Vanilla & official",
+      entries: [
+        { value: "vanilla", label: "Vanilla — the official Mojang server", available: true },
+        { value: "bds", label: "Bedrock Dedicated Server", available: false },
+      ],
+    },
+    {
+      category: "Plugins (Bukkit ecosystem)",
+      entries: [
+        { value: "paper", label: "Paper — fast, the plugin gold standard", available: true },
+        { value: "purpur", label: "Purpur — Paper + extreme configurability", available: true },
+        { value: "folia", label: "Folia — multithreaded regions, huge player counts", available: true },
+        { value: "spigot", label: "Spigot — the legacy plugin backbone", available: false },
+      ],
+    },
+    {
+      category: "Mods",
+      entries: [
+        { value: "fabric", label: "Fabric — lightweight modern mod loader", available: true },
+        { value: "neoforge", label: "NeoForge — modern Forge successor", available: false },
+        { value: "forge", label: "Forge — the classic modding giant", available: false },
+        { value: "quilt", label: "Quilt — community fork of Fabric", available: false },
+      ],
+    },
+    {
+      category: "Hybrid (mods + plugins)",
+      entries: [
+        { value: "arclight", label: "Arclight — plugins on Forge/Fabric", available: false },
+        { value: "mohist", label: "Mohist — Forge modpacks + plugins", available: false },
+      ],
+    },
+    {
+      category: "Network proxies",
+      entries: [
+        { value: "velocity", label: "Velocity — modern secure proxy", available: true },
+        { value: "bungeecord", label: "BungeeCord — the original proxy", available: true },
+      ],
+    },
+  ];
+
+  const DEFAULT_GAME_PORT = 25565;
+  const DEFAULT_PROXY_PORT = 25577;
+
   let name = $state("");
+  let loader = $state<Loader>("vanilla");
   let versions = $state<McVersion[]>([]);
+  let versionsForLoader = $state<Loader | null>(null);
   let selectedVersion = $state("");
   let memoryMb = $state(2048);
+  let port = $state(DEFAULT_GAME_PORT);
+  let portTouched = $state(false);
   let acceptEula = $state(false);
   let showSnapshots = $state(false);
   let loadingVersions = $state(false);
@@ -35,17 +90,29 @@
   let locationParent = $state<string | null>(null);
   let locationPreview = $state("");
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
+  let advancedOpen = $state(false);
+  let javaArgs = $state("");
+  let startCommand = $state("");
 
+  const isProxy = $derived(PROXY_LOADERS.includes(loader));
+  const hasSnapshots = $derived(versions.some((version) => version.type !== "release"));
   const visibleVersions = $derived(
     versions.filter((version) => showSnapshots || version.type === "release"),
   );
   const canSubmit = $derived(
-    name.trim().length > 0 && selectedVersion !== "" && acceptEula && !creating,
+    name.trim().length > 0 && selectedVersion !== "" && (acceptEula || isProxy) && !creating,
   );
 
   $effect(() => {
-    if (open && versions.length === 0 && !loadingVersions) {
-      loadVersions();
+    if (open && versionsForLoader !== loader && !loadingVersions) {
+      loadVersions(loader);
+    }
+  });
+
+  $effect(() => {
+    // Sensible port defaults per software family, until the user edits it.
+    if (!portTouched) {
+      port = isProxy ? DEFAULT_PROXY_PORT : DEFAULT_GAME_PORT;
     }
   });
 
@@ -80,14 +147,17 @@
     };
   });
 
-  async function loadVersions() {
+  async function loadVersions(forLoader: Loader) {
     loadingVersions = true;
     try {
-      versions = await api.listMinecraftVersions();
-      const latestRelease = versions.find((version) => version.type === "release");
-      selectedVersion = latestRelease?.id ?? "";
+      versions = await api.listLoaderVersions(forLoader);
+      versionsForLoader = forLoader;
+      const newestRelease = versions.find((version) => version.type === "release");
+      selectedVersion = newestRelease?.id ?? versions[0]?.id ?? "";
     } catch (error) {
-      toastsStore.error(`Couldn't load Minecraft versions: ${error}`);
+      versions = [];
+      selectedVersion = "";
+      toastsStore.error(`Couldn't load versions: ${error}`);
     } finally {
       loadingVersions = false;
     }
@@ -101,10 +171,13 @@
       const server = await api.createServer({
         name,
         mcVersion: selectedVersion,
-        loader: "vanilla",
+        loader,
         memoryMb,
+        port,
         acceptEula,
         locationParent,
+        javaArgs: javaArgs.trim() === "" ? null : javaArgs.trim(),
+        startCommand: startCommand.trim() === "" ? null : startCommand.trim(),
       });
       await serversStore.refresh();
       toastsStore.success(`"${server.name}" is ready! 🎂`);
@@ -121,6 +194,10 @@
     name = "";
     acceptEula = false;
     memoryMb = 2048;
+    portTouched = false;
+    javaArgs = "";
+    startCommand = "";
+    advancedOpen = false;
     progress = null;
   }
 
@@ -155,22 +232,58 @@
     </label>
 
     <label>
-      <span>Minecraft version</span>
-      {#if loadingVersions}
-        <div class="loading">Fetching versions… ⛏️</div>
-      {:else}
-        <select bind:value={selectedVersion}>
-          {#each visibleVersions as version (version.id)}
-            <option value={version.id}>{version.id}</option>
-          {/each}
-        </select>
-      {/if}
+      <span>Server software</span>
+      <select bind:value={loader}>
+        {#each LOADER_CATALOG as group (group.category)}
+          <optgroup label={group.category}>
+            {#each group.entries as entry (entry.value)}
+              <option value={entry.value} disabled={!entry.available}>
+                {entry.label}{entry.available ? "" : " (coming soon)"}
+              </option>
+            {/each}
+          </optgroup>
+        {/each}
+      </select>
     </label>
 
-    <label class="checkbox">
-      <input type="checkbox" bind:checked={showSnapshots} />
-      <span>Show snapshots</span>
-    </label>
+    <div class="row">
+      <label class="grow">
+        <span>Version</span>
+        {#if loadingVersions}
+          <div class="loading">Fetching versions… ⛏️</div>
+        {:else}
+          <select bind:value={selectedVersion}>
+            {#each visibleVersions as version (version.id)}
+              <option value={version.id}>{version.id}</option>
+            {/each}
+          </select>
+        {/if}
+      </label>
+      <label class="port-label">
+        <span>Port</span>
+        <input
+          type="number"
+          min="1024"
+          max="65535"
+          bind:value={port}
+          oninput={() => (portTouched = true)}
+        />
+      </label>
+    </div>
+
+    {#if hasSnapshots}
+      <label class="checkbox">
+        <input type="checkbox" bind:checked={showSnapshots} />
+        <span>Show snapshots</span>
+      </label>
+    {/if}
+
+    {#if isProxy}
+      <p class="proxy-note">
+        Proxies keep their port in their own config (velocity.toml / config.yml) —
+        set it there after the first start.
+      </p>
+    {/if}
 
     <label>
       <span>Memory — {memoryMb} MB</span>
@@ -193,18 +306,53 @@
       </div>
     </div>
 
-    <label class="checkbox eula">
-      <input type="checkbox" bind:checked={acceptEula} />
-      <span>
-        I accept the
-        <a href="https://aka.ms/MinecraftEULA" onclick={openEula}>Minecraft EULA</a>
-      </span>
-    </label>
+    {#if !isProxy}
+      <label class="checkbox eula">
+        <input type="checkbox" bind:checked={acceptEula} />
+        <span>
+          I accept the
+          <a href="https://aka.ms/MinecraftEULA" onclick={openEula}>Minecraft EULA</a>
+        </span>
+      </label>
+    {/if}
+
+    <div class="advanced">
+      <button type="button" class="advanced-toggle" onclick={() => (advancedOpen = !advancedOpen)}>
+        <span class="chevron" class:open={advancedOpen}>▸</span>
+        Advanced
+      </button>
+      {#if advancedOpen}
+        <div class="advanced-body">
+          <label>
+            <span>Extra JVM arguments</span>
+            <input
+              type="text"
+              bind:value={javaArgs}
+              placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+              spellcheck="false"
+            />
+          </label>
+          <label>
+            <span>Custom start command (overrides everything)</span>
+            <input
+              type="text"
+              bind:value={startCommand}
+              placeholder="java -Xmx4G -jar server.jar nogui"
+              spellcheck="false"
+            />
+          </label>
+          <p class="hint">
+            The custom command runs from the server folder and replaces the java
+            invocation entirely — memory and JVM args above are ignored.
+          </p>
+        </div>
+      {/if}
+    </div>
 
     {#if creating}
       <div class="progress">
         <ProgressBar value={progress} />
-        <p class="hint">Downloading the server jar… 📦</p>
+        <p class="hint">Downloading the server software… 📦</p>
       </div>
     {/if}
 
@@ -232,7 +380,23 @@
     color: var(--muted);
   }
 
+  .row {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .grow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .port-label {
+    width: 110px;
+    flex-shrink: 0;
+  }
+
   input[type="text"],
+  input[type="number"],
   select {
     font-family: inherit;
     font-size: 1rem;
@@ -243,9 +407,11 @@
     padding: 0.6em 0.9em;
     outline: none;
     transition: border-color 0.18s ease;
+    min-width: 0;
   }
 
   input[type="text"]:focus,
+  input[type="number"]:focus,
   select:focus {
     border-color: var(--accent);
   }
@@ -268,6 +434,12 @@
 
   .eula a {
     color: var(--accent);
+  }
+
+  .proxy-note {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--muted);
   }
 
   .loading {
@@ -307,6 +479,40 @@
     word-break: break-all;
   }
 
+  .advanced-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .advanced-toggle:hover {
+    color: var(--text);
+  }
+
+  .chevron {
+    display: inline-block;
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+
+  .chevron.open {
+    transform: rotate(90deg);
+  }
+
+  .advanced-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
   .progress {
     display: flex;
     flex-direction: column;
@@ -317,6 +523,10 @@
     margin: 0;
     font-size: 0.85rem;
     color: var(--muted);
+    text-align: left;
+  }
+
+  .progress .hint {
     text-align: center;
   }
 
