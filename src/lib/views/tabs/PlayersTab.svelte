@@ -65,14 +65,32 @@
 </script>
 
 <div class="players-tab">
-  {#if !canCommand}
+  {#if canCommand}
+    <div class="manual">
+      <h3>Manage any player</h3>
+      <p class="hint">Works for offline players too — whitelist, pardon, and more.</p>
+      <div class="manual-row">
+        <input type="text" bind:value={manualName} placeholder="Player name…" spellcheck="false" />
+        <Button variant="soft" onclick={() => runManual("whitelist add", "Whitelisted")}>
+          ✅ Whitelist
+        </Button>
+        <Button variant="ghost" onclick={() => runManual("whitelist remove", "Un-whitelisted")}>
+          Remove
+        </Button>
+        <Button variant="ghost" onclick={() => runManual("pardon", "Pardoned")}>🕊️ Pardon</Button>
+        <Button variant="danger" onclick={() => runManual("ban", "Banned")}>🔨 Ban</Button>
+      </div>
+    </div>
+  {:else}
     <p class="offline-note">Player management needs the server running 🌙</p>
-  {:else if players.length === 0}
+  {/if}
+
+  {#if canCommand && players.length === 0}
     <div class="empty" in:fade={{ duration: 120 }}>
       <span class="face">🐑</span>
       <p>No players online right now — the sheep have the place to themselves.</p>
     </div>
-  {:else}
+  {:else if canCommand}
     <ul class="player-list">
       {#each players as player (player)}
         <li in:fade={{ duration: 120 }}>
@@ -127,6 +145,7 @@
 
     {#if historyOpen}
       <div class="history-body" in:fade={{ duration: 120 }}>
+        <!-- History stays last: it's reference material, not a daily control. -->
         {#if roster.length === 0}
           <p class="history-empty">No one has visited this server yet 🌱</p>
         {:else}
@@ -167,23 +186,6 @@
     {/if}
   </div>
 
-  {#if canCommand}
-    <div class="manual">
-      <h3>Manage any player</h3>
-      <p class="hint">Works for offline players too — whitelist, pardon, and more.</p>
-      <div class="manual-row">
-        <input type="text" bind:value={manualName} placeholder="Player name…" spellcheck="false" />
-        <Button variant="soft" onclick={() => runManual("whitelist add", "Whitelisted")}>
-          ✅ Whitelist
-        </Button>
-        <Button variant="ghost" onclick={() => runManual("whitelist remove", "Un-whitelisted")}>
-          Remove
-        </Button>
-        <Button variant="ghost" onclick={() => runManual("pardon", "Pardoned")}>🕊️ Pardon</Button>
-        <Button variant="danger" onclick={() => runManual("ban", "Banned")}>🔨 Ban</Button>
-      </div>
-    </div>
-  {/if}
 </div>
 
 <style>

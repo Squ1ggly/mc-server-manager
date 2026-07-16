@@ -17,6 +17,7 @@
   let busy = $state(false);
 
   const status = $derived(serversStore.statusOf(server.id));
+  const players = $derived(serversStore.playersOf(server.id));
   const canStart = $derived(status === "stopped" || status === "crashed");
   const canStop = $derived(status === "running" || status === "starting");
 
@@ -53,6 +54,9 @@
     <Chip>🧱 {server.mcVersion}</Chip>
     <Chip>{server.loader}</Chip>
     <Chip>💾 {server.memoryMb} MB</Chip>
+    {#if status === "running"}
+      <Chip>👥 {players.length} online</Chip>
+    {/if}
   </div>
   <div class="actions">
     {#if canStart}

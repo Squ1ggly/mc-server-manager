@@ -39,7 +39,7 @@
 
 <style>
   .dashboard {
-    max-width: 1080px;
+    max-width: 1240px;
     margin: 0 auto;
     padding: 1.5rem 2rem 3rem;
   }
@@ -56,9 +56,11 @@
     margin: 0;
   }
 
+  /* auto-fit collapses unused tracks, so few servers get comfortably wide
+     cards (up to 560px) instead of huddling in narrow slots. */
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(340px, 560px));
     gap: 1.4rem;
   }
 
