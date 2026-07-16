@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { fade } from "svelte/transition";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
   import { api, PROXY_LOADERS, type Loader, type McVersion } from "../api";
@@ -26,6 +27,8 @@
   interface CatalogEntry {
     value: Loader;
     label: string;
+    emoji: string;
+    hint: string;
     available: boolean;
   }
 
@@ -33,40 +36,124 @@
     {
       category: "Vanilla & official",
       entries: [
-        { value: "vanilla", label: "Vanilla — the official Mojang server", available: true },
-        { value: "bds", label: "Bedrock Dedicated Server", available: false },
+        {
+          value: "vanilla",
+          label: "Vanilla",
+          emoji: "🍦",
+          hint: "The official Mojang server",
+          available: true,
+        },
+        {
+          value: "bds",
+          label: "Bedrock",
+          emoji: "🪨",
+          hint: "Official Bedrock dedicated server",
+          available: false,
+        },
       ],
     },
     {
       category: "Plugins (Bukkit ecosystem)",
       entries: [
-        { value: "paper", label: "Paper — fast, the plugin gold standard", available: true },
-        { value: "purpur", label: "Purpur — Paper + extreme configurability", available: true },
-        { value: "folia", label: "Folia — multithreaded regions, huge player counts", available: true },
-        { value: "spigot", label: "Spigot — the legacy plugin backbone", available: false },
+        {
+          value: "paper",
+          label: "Paper",
+          emoji: "📜",
+          hint: "Fast — the plugin gold standard",
+          available: true,
+        },
+        {
+          value: "purpur",
+          label: "Purpur",
+          emoji: "🧪",
+          hint: "Paper + extreme configurability",
+          available: true,
+        },
+        {
+          value: "folia",
+          label: "Folia",
+          emoji: "🧵",
+          hint: "Multithreaded, huge player counts",
+          available: true,
+        },
+        {
+          value: "spigot",
+          label: "Spigot",
+          emoji: "🔩",
+          hint: "The legacy plugin backbone",
+          available: false,
+        },
       ],
     },
     {
       category: "Mods",
       entries: [
-        { value: "fabric", label: "Fabric — lightweight modern mod loader", available: true },
-        { value: "neoforge", label: "NeoForge — modern Forge successor", available: false },
-        { value: "forge", label: "Forge — the classic modding giant", available: false },
-        { value: "quilt", label: "Quilt — community fork of Fabric", available: false },
+        {
+          value: "fabric",
+          label: "Fabric",
+          emoji: "🧶",
+          hint: "Lightweight modern mod loader",
+          available: true,
+        },
+        {
+          value: "neoforge",
+          label: "NeoForge",
+          emoji: "🔥",
+          hint: "The modern Forge successor",
+          available: false,
+        },
+        {
+          value: "forge",
+          label: "Forge",
+          emoji: "⚒️",
+          hint: "The classic modding giant",
+          available: false,
+        },
+        {
+          value: "quilt",
+          label: "Quilt",
+          emoji: "🪡",
+          hint: "Community fork of Fabric",
+          available: false,
+        },
       ],
     },
     {
       category: "Hybrid (mods + plugins)",
       entries: [
-        { value: "arclight", label: "Arclight — plugins on Forge/Fabric", available: false },
-        { value: "mohist", label: "Mohist — Forge modpacks + plugins", available: false },
+        {
+          value: "arclight",
+          label: "Arclight",
+          emoji: "🌉",
+          hint: "Plugins on Forge/Fabric",
+          available: false,
+        },
+        {
+          value: "mohist",
+          label: "Mohist",
+          emoji: "🧬",
+          hint: "Forge modpacks + plugins",
+          available: false,
+        },
       ],
     },
     {
       category: "Network proxies",
       entries: [
-        { value: "velocity", label: "Velocity — modern secure proxy", available: true },
-        { value: "bungeecord", label: "BungeeCord — the original proxy", available: true },
+        {
+          value: "velocity",
+          label: "Velocity",
+          emoji: "⚡",
+          hint: "Modern secure proxy",
+          available: true,
+        },
+        {
+          value: "bungeecord",
+          label: "BungeeCord",
+          emoji: "🌐",
+          hint: "The original network proxy",
+          available: true,
+        },
       ],
     },
   ];
@@ -74,6 +161,7 @@
   const DEFAULT_GAME_PORT = 25565;
   const DEFAULT_PROXY_PORT = 25577;
 
+  let step = $state<"software" | "details">("software");
   let name = $state("");
   let loader = $state<Loader>("vanilla");
   let versions = $state<McVersion[]>([]);
@@ -95,6 +183,9 @@
   let startCommand = $state("");
 
   const isProxy = $derived(PROXY_LOADERS.includes(loader));
+  const chosenEntry = $derived(
+    LOADER_CATALOG.flatMap((group) => group.entries).find((entry) => entry.value === loader),
+  );
   const hasSnapshots = $derived(versions.some((version) => version.type !== "release"));
   const visibleVersions = $derived(
     versions.filter((version) => showSnapshots || version.type === "release"),
@@ -102,12 +193,6 @@
   const canSubmit = $derived(
     name.trim().length > 0 && selectedVersion !== "" && (acceptEula || isProxy) && !creating,
   );
-
-  $effect(() => {
-    if (open && versionsForLoader !== loader && !loadingVersions) {
-      loadVersions(loader);
-    }
-  });
 
   $effect(() => {
     // Sensible port defaults per software family, until the user edits it.
@@ -119,7 +204,7 @@
   $effect(() => {
     // Re-preview the target folder whenever the name or parent changes,
     // debounced so we don't call the backend on every keystroke.
-    if (!open) {
+    if (!open || step !== "details") {
       return;
     }
     const currentName = name;
@@ -146,6 +231,18 @@
       unlistenPromise.then((unlisten) => unlisten());
     };
   });
+
+  function chooseSoftware(entry: CatalogEntry) {
+    if (!entry.available) {
+      toastsStore.show(`${entry.label} support is coming soon! 🚧`);
+      return;
+    }
+    loader = entry.value;
+    step = "details";
+    if (versionsForLoader !== loader) {
+      loadVersions(loader);
+    }
+  }
 
   async function loadVersions(forLoader: Loader) {
     loadingVersions = true;
@@ -191,6 +288,7 @@
   }
 
   function resetForm() {
+    step = "software";
     name = "";
     acceptEula = false;
     memoryMb = 2048;
@@ -199,6 +297,11 @@
     startCommand = "";
     advancedOpen = false;
     progress = null;
+  }
+
+  function handleClose() {
+    resetForm();
+    onclose();
   }
 
   function openEula(event: MouseEvent) {
@@ -219,156 +322,300 @@
   }
 </script>
 
-<Modal {open} title="New server 🍰" onclose={creating ? undefined : onclose}>
-  <form onsubmit={submit}>
-    <label>
-      <span>Name</span>
-      <input
-        type="text"
-        bind:value={name}
-        placeholder="My cozy world"
-        maxlength={SERVER_NAME_MAX_LENGTH}
-      />
-    </label>
-
-    <label>
-      <span>Server software</span>
-      <select bind:value={loader}>
-        {#each LOADER_CATALOG as group (group.category)}
-          <optgroup label={group.category}>
+<Modal
+  {open}
+  wide={step === "software"}
+  title={step === "software" ? "Pick your server software 🧱" : "New server 🍰"}
+  onclose={creating ? undefined : handleClose}
+>
+  {#if step === "software"}
+    <div class="catalog" in:fade={{ duration: 120 }}>
+      {#each LOADER_CATALOG as group (group.category)}
+        <div class="category">
+          <h4>{group.category}</h4>
+          <div class="tiles">
             {#each group.entries as entry (entry.value)}
-              <option value={entry.value} disabled={!entry.available}>
-                {entry.label}{entry.available ? "" : " (coming soon)"}
-              </option>
+              <button
+                type="button"
+                class="tile"
+                class:unavailable={!entry.available}
+                onclick={() => chooseSoftware(entry)}
+              >
+                <span class="tile-emoji">{entry.emoji}</span>
+                <span class="tile-name">
+                  {entry.label}
+                  {#if !entry.available}
+                    <span class="soon">soon</span>
+                  {/if}
+                </span>
+                <span class="tile-hint">{entry.hint}</span>
+              </button>
             {/each}
-          </optgroup>
-        {/each}
-      </select>
-    </label>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <form onsubmit={submit} in:fade={{ duration: 120 }}>
+      <button type="button" class="chosen" onclick={() => (step = "software")}>
+        <span class="tile-emoji">{chosenEntry?.emoji}</span>
+        <span class="chosen-name">{chosenEntry?.label}</span>
+        <span class="chosen-change">change</span>
+      </button>
 
-    <div class="row">
-      <label class="grow">
-        <span>Version</span>
-        {#if loadingVersions}
-          <div class="loading">Fetching versions… ⛏️</div>
-        {:else}
-          <select bind:value={selectedVersion}>
-            {#each visibleVersions as version (version.id)}
-              <option value={version.id}>{version.id}</option>
-            {/each}
-          </select>
-        {/if}
-      </label>
-      <label class="port-label">
-        <span>Port</span>
+      <label>
+        <span>Name</span>
         <input
-          type="number"
-          min="1024"
-          max="65535"
-          bind:value={port}
-          oninput={() => (portTouched = true)}
+          type="text"
+          bind:value={name}
+          placeholder="My cozy world"
+          maxlength={SERVER_NAME_MAX_LENGTH}
         />
       </label>
-    </div>
 
-    {#if hasSnapshots}
-      <label class="checkbox">
-        <input type="checkbox" bind:checked={showSnapshots} />
-        <span>Show snapshots</span>
-      </label>
-    {/if}
-
-    {#if isProxy}
-      <p class="proxy-note">
-        Proxies keep their port in their own config (velocity.toml / config.yml) —
-        set it there after the first start.
-      </p>
-    {/if}
-
-    <label>
-      <span>Memory — {memoryMb} MB</span>
-      <input
-        type="range"
-        min={MEMORY_MIN_MB}
-        max={MEMORY_MAX_MB}
-        step={MEMORY_STEP_MB}
-        bind:value={memoryMb}
-      />
-    </label>
-
-    <div class="location">
-      <span class="location-label">📁 Save location</span>
-      <div class="location-row">
-        <span class="location-path" title={locationPreview}>
-          {locationPreview || "…"}
-        </span>
-        <Button variant="soft" onclick={browseLocation}>Browse…</Button>
+      <div class="row">
+        <label class="grow">
+          <span>Version</span>
+          {#if loadingVersions}
+            <div class="loading">Fetching versions… ⛏️</div>
+          {:else}
+            <select bind:value={selectedVersion}>
+              {#each visibleVersions as version (version.id)}
+                <option value={version.id}>{version.id}</option>
+              {/each}
+            </select>
+          {/if}
+        </label>
+        <label class="port-label">
+          <span>Port</span>
+          <input
+            type="number"
+            min="1024"
+            max="65535"
+            bind:value={port}
+            oninput={() => (portTouched = true)}
+          />
+        </label>
       </div>
-    </div>
 
-    {#if !isProxy}
-      <label class="checkbox eula">
-        <input type="checkbox" bind:checked={acceptEula} />
-        <span>
-          I accept the
-          <a href="https://aka.ms/MinecraftEULA" onclick={openEula}>Minecraft EULA</a>
-        </span>
+      {#if hasSnapshots}
+        <label class="checkbox">
+          <input type="checkbox" bind:checked={showSnapshots} />
+          <span>Show snapshots</span>
+        </label>
+      {/if}
+
+      {#if isProxy}
+        <p class="hint">
+          Proxies keep their port in their own config (velocity.toml / config.yml) —
+          set it there after the first start.
+        </p>
+      {/if}
+
+      <label>
+        <span>Memory — {memoryMb} MB</span>
+        <input
+          type="range"
+          min={MEMORY_MIN_MB}
+          max={MEMORY_MAX_MB}
+          step={MEMORY_STEP_MB}
+          bind:value={memoryMb}
+        />
       </label>
-    {/if}
 
-    <div class="advanced">
-      <button type="button" class="advanced-toggle" onclick={() => (advancedOpen = !advancedOpen)}>
-        <span class="chevron" class:open={advancedOpen}>▸</span>
-        Advanced
-      </button>
-      {#if advancedOpen}
-        <div class="advanced-body">
-          <label>
-            <span>Extra JVM arguments</span>
-            <input
-              type="text"
-              bind:value={javaArgs}
-              placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
-              spellcheck="false"
-            />
-          </label>
-          <label>
-            <span>Custom start command (overrides everything)</span>
-            <input
-              type="text"
-              bind:value={startCommand}
-              placeholder="java -Xmx4G -jar server.jar nogui"
-              spellcheck="false"
-            />
-          </label>
-          <p class="hint">
-            The custom command runs from the server folder and replaces the java
-            invocation entirely — memory and JVM args above are ignored.
-          </p>
+      <div class="location">
+        <span class="location-label">📁 Save location</span>
+        <div class="location-row">
+          <span class="location-path" title={locationPreview}>
+            {locationPreview || "…"}
+          </span>
+          <Button variant="soft" onclick={browseLocation}>Browse…</Button>
+        </div>
+      </div>
+
+      {#if !isProxy}
+        <label class="checkbox eula">
+          <input type="checkbox" bind:checked={acceptEula} />
+          <span>
+            I accept the
+            <a href="https://aka.ms/MinecraftEULA" onclick={openEula}>Minecraft EULA</a>
+          </span>
+        </label>
+      {/if}
+
+      <div class="advanced">
+        <button
+          type="button"
+          class="advanced-toggle"
+          onclick={() => (advancedOpen = !advancedOpen)}
+        >
+          <span class="chevron" class:open={advancedOpen}>▸</span>
+          Advanced
+        </button>
+        {#if advancedOpen}
+          <div class="advanced-body">
+            <label>
+              <span>Extra JVM arguments</span>
+              <input
+                type="text"
+                bind:value={javaArgs}
+                placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+                spellcheck="false"
+              />
+            </label>
+            <label>
+              <span>Custom start command (overrides everything)</span>
+              <input
+                type="text"
+                bind:value={startCommand}
+                placeholder="java -Xmx4G -jar server.jar nogui"
+                spellcheck="false"
+              />
+            </label>
+            <p class="hint">
+              The custom command runs from the server folder and replaces the java
+              invocation entirely — memory and JVM args above are ignored.
+            </p>
+          </div>
+        {/if}
+      </div>
+
+      {#if creating}
+        <div class="progress">
+          <ProgressBar value={progress} />
+          <p class="hint centered">Downloading the server software… 📦</p>
         </div>
       {/if}
-    </div>
 
-    {#if creating}
-      <div class="progress">
-        <ProgressBar value={progress} />
-        <p class="hint">Downloading the server software… 📦</p>
+      <div class="actions">
+        <Button variant="ghost" onclick={() => (step = "software")}>← Back</Button>
+        <Button type="submit" disabled={!canSubmit}>
+          {creating ? "Creating…" : "Create server 🚀"}
+        </Button>
       </div>
-    {/if}
-
-    <div class="actions">
-      <Button type="submit" disabled={!canSubmit}>
-        {creating ? "Creating…" : "Create server 🚀"}
-      </Button>
-    </div>
-  </form>
+    </form>
+  {/if}
 </Modal>
 
 <style>
+  /* --- Step 1: the software catalog ------------------------------------ */
+  .catalog {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+
+  .category h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.6rem;
+  }
+
+  /* Big blocky choice tiles with the classic bevel. */
+  .tile {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    border: none;
+    font-family: inherit;
+    text-align: left;
+    background: var(--surface-2);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 0.75rem 0.85rem;
+    cursor: pointer;
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.08),
+      inset 0 -3px 0 rgba(0, 0, 0, 0.2),
+      0 0 0 2px rgba(15, 15, 18, 0.3);
+    transition: background-color var(--duration-fast) var(--ease-out);
+  }
+
+  .tile:hover {
+    background: var(--accent-soft);
+  }
+
+  .tile.unavailable {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .tile.unavailable:hover {
+    background: var(--surface-2);
+  }
+
+  .tile-emoji {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .tile-name {
+    font-family: var(--font-pixel);
+    font-size: 0.95rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+  }
+
+  .soon {
+    font-family: var(--font-body);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--peach);
+    background: var(--peach-soft);
+    border-radius: var(--radius-sm);
+    padding: 0.15em 0.5em;
+  }
+
+  .tile-hint {
+    font-size: 0.75rem;
+    color: var(--muted);
+    line-height: 1.3;
+  }
+
+  /* --- Step 2: details --------------------------------------------------- */
   form {
     display: flex;
     flex-direction: column;
     gap: 1rem;
+  }
+
+  .chosen {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border: none;
+    font-family: inherit;
+    background: var(--accent-soft);
+    color: var(--text);
+    border-radius: var(--radius-md);
+    padding: 0.6rem 0.9rem;
+    cursor: pointer;
+  }
+
+  .chosen-name {
+    font-family: var(--font-pixel);
+    font-weight: 700;
+    flex: 1;
+    text-align: left;
+  }
+
+  .chosen-change {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent-strong);
   }
 
   label {
@@ -434,12 +681,6 @@
 
   .eula a {
     color: var(--accent);
-  }
-
-  .proxy-note {
-    margin: 0;
-    font-size: 0.82rem;
-    color: var(--muted);
   }
 
   .loading {
@@ -523,15 +764,15 @@
     margin: 0;
     font-size: 0.85rem;
     color: var(--muted);
-    text-align: left;
   }
 
-  .progress .hint {
+  .hint.centered {
     text-align: center;
   }
 
   .actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    gap: 0.6rem;
   }
 </style>

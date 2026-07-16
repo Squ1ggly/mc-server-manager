@@ -52,7 +52,7 @@
       disabled={!canCommand}
       spellcheck="false"
     />
-    <Button type="submit" disabled={!canCommand}>Send ✉️</Button>
+    <Button type="submit" disabled={!canCommand}>Send 🏹</Button>
   </form>
 </div>
 

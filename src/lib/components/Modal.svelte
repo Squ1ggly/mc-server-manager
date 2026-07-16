@@ -8,10 +8,12 @@
     title: string;
     /** Omit to make the modal non-dismissable (e.g. while working). */
     onclose?: () => void;
+    /** Wider dialog for content like tile grids. */
+    wide?: boolean;
     children: Snippet;
   }
 
-  let { open, title, onclose, children }: Props = $props();
+  let { open, title, onclose, wide = false, children }: Props = $props();
 
   function handleOverlayClick() {
     onclose?.();
@@ -27,6 +29,7 @@
   >
     <div
       class="dialog"
+      class:wide
       transition:scale={{ start: 0.97, duration: 140, easing: cubicOut }}
       onclick={(event) => event.stopPropagation()}
       onkeydown={(event) => event.key === "Escape" && onclose?.()}
@@ -65,6 +68,10 @@
     width: min(480px, calc(100vw - 3rem));
     max-height: calc(100vh - 4rem);
     overflow-y: auto;
+  }
+
+  .dialog.wide {
+    width: min(680px, calc(100vw - 3rem));
   }
 
   header {

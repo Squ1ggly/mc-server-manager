@@ -3,6 +3,9 @@
   import Dashboard from "./lib/views/Dashboard.svelte";
   import ServerDetail from "./lib/views/ServerDetail.svelte";
   import AppSettings from "./lib/views/AppSettings.svelte";
+  import Docs from "./lib/views/Docs.svelte";
+  import Button from "./lib/components/Button.svelte";
+  import { api, type ServerConfig } from "./lib/api";
   import Toasts from "./lib/components/Toasts.svelte";
   import Confetti from "./lib/components/Confetti.svelte";
   import StatusBlob from "./lib/components/StatusBlob.svelte";
@@ -21,7 +24,11 @@
   } from "./lib/events";
   import { fade } from "svelte/transition";
 
-  type Route = { view: "home" } | { view: "server"; serverId: string } | { view: "settings" };
+  type Route =
+    | { view: "home" }
+    | { view: "server"; serverId: string }
+    | { view: "settings" }
+    | { view: "docs" };
 
   /** Hide the Java pill after this long without progress (e.g. a failure). */
   const JAVA_PILL_STALE_MS = 10_000;
@@ -65,6 +72,62 @@
     const found = serversStore.servers.find((server) => server.id === currentRoute.serverId);
     return found ?? null;
   });
+
+  // --- Bulk actions -------------------------------------------------------
+  let bulkBusy = $state(false);
+
+  const runningCount = $derived(
+    serversStore.servers.filter((server) => serversStore.statusOf(server.id) === "running")
+      .length,
+  );
+
+  async function bulkRun(
+    verb: string,
+    targets: ServerConfig[],
+    action: (server: ServerConfig) => Promise<unknown>,
+  ) {
+    if (targets.length === 0) {
+      toastsStore.show(`Nothing to ${verb} — no matching servers`);
+      return;
+    }
+    bulkBusy = true;
+    let succeeded = 0;
+    for (const server of targets) {
+      try {
+        await action(server);
+        succeeded++;
+      } catch (error) {
+        toastsStore.error(`${server.name}: ${error}`);
+      }
+    }
+    if (succeeded > 0) {
+      toastsStore.success(
+        `${verb} ${succeeded} server${succeeded === 1 ? "" : "s"} ✔`,
+      );
+    }
+    bulkBusy = false;
+  }
+
+  const startAll = () =>
+    bulkRun(
+      "Started",
+      serversStore.servers.filter((server) =>
+        ["stopped", "crashed"].includes(serversStore.statusOf(server.id)),
+      ),
+      (server) => api.startServer(server.id),
+    );
+
+  const stopAll = () =>
+    bulkRun(
+      "Stopped",
+      serversStore.servers.filter((server) =>
+        ["running", "starting"].includes(serversStore.statusOf(server.id)),
+      ),
+      (server) => api.stopServer(server.id),
+    );
+
+  const backupAll = () =>
+    bulkRun("Backed up", serversStore.servers, (server) => api.createBackup(server.id));
 
   onMount(() => {
     serversStore.refresh().catch((error) => toastsStore.error(String(error)));
@@ -127,6 +190,13 @@
 
     <button
       class="settings-item"
+      class:active={route.view === "docs"}
+      onclick={() => (route = { view: "docs" })}
+    >
+      📖 <span>Docs</span>
+    </button>
+    <button
+      class="settings-item"
       class:active={route.view === "settings"}
       onclick={() => (route = { view: "settings" })}
     >
@@ -134,15 +204,29 @@
     </button>
   </aside>
 
-  <main>
-    {#if selectedServer}
-      <ServerDetail server={selectedServer} onback={() => (route = { view: "home" })} />
-    {:else if route.view === "settings"}
-      <AppSettings />
-    {:else}
-      <Dashboard onopen={(serverId) => (route = { view: "server", serverId })} />
-    {/if}
-  </main>
+  <div class="content">
+    <header class="bulkbar">
+      <span class="bulk-title">⚡ All servers</span>
+      <Button variant="soft" disabled={bulkBusy} onclick={startAll}>▶ Start all</Button>
+      <Button variant="danger" disabled={bulkBusy} onclick={stopAll}>⏹ Stop all</Button>
+      <Button variant="ghost" disabled={bulkBusy} onclick={backupAll}>🎁 Backup all</Button>
+      <span class="bulk-status">
+        {runningCount}/{serversStore.servers.length} running
+      </span>
+    </header>
+
+    <main>
+      {#if selectedServer}
+        <ServerDetail server={selectedServer} onback={() => (route = { view: "home" })} />
+      {:else if route.view === "settings"}
+        <AppSettings />
+      {:else if route.view === "docs"}
+        <Docs onopenview={(view) => (route = { view })} />
+      {:else}
+        <Dashboard onopen={(serverId) => (route = { view: "server", serverId })} />
+      {/if}
+    </main>
+  </div>
 </div>
 
 {#if javaDownload}
@@ -250,9 +334,42 @@
     white-space: nowrap;
   }
 
+  .content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bulkbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+    flex-shrink: 0;
+  }
+
+  .bulk-title {
+    font-family: var(--font-pixel);
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-right: 0.5rem;
+  }
+
+  .bulk-status {
+    margin-left: auto;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
   main {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     overflow-y: auto;
   }
 

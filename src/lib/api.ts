@@ -146,6 +146,10 @@ export const api = {
     invoke<RosterEntry[]>("get_player_roster", { serverId }),
   updateServer: (serverId: string, request: UpdateServerRequest) =>
     invoke<ServerConfig>("update_server", { serverId, request }),
+  setServerIcon: (serverId: string, sourcePath: string) =>
+    invoke<void>("set_server_icon", { serverId, sourcePath }),
+  getServerIcon: (serverId: string) => invoke<string | null>("get_server_icon", { serverId }),
+  removeServerIcon: (serverId: string) => invoke<void>("remove_server_icon", { serverId }),
   getServerProperties: (serverId: string) =>
     invoke<Property[]>("get_server_properties", { serverId }),
   saveServerProperties: (serverId: string, updates: Property[]) =>

@@ -167,6 +167,73 @@ pub async fn detect_java(state: State<'_, AppState>) -> AppResult<Vec<JavaInstal
     Ok(installs)
 }
 
+/// The pixel size Minecraft requires for `server-icon.png`.
+const SERVER_ICON_SIZE: u32 = 64;
+const SERVER_ICON_FILE: &str = "server-icon.png";
+
+/// Sets the server's list icon from any image file: resized to the required
+/// 64x64 and saved as `server-icon.png`. Applies on the next start.
+#[tauri::command]
+pub async fn set_server_icon(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    source_path: PathBuf,
+) -> AppResult<()> {
+    let config = service::find_config(&app, &server_id).await?;
+    let icon_path = state.server_dir(&config).join(SERVER_ICON_FILE);
+
+    let conversion = tokio::task::spawn_blocking(move || {
+        let source = image::open(&source_path)
+            .map_err(|image_error| AppError::InvalidInput(image_error.to_string()))?;
+        let resized = source.resize_exact(
+            SERVER_ICON_SIZE,
+            SERVER_ICON_SIZE,
+            image::imageops::FilterType::Lanczos3,
+        );
+        resized
+            .save(&icon_path)
+            .map_err(|image_error| AppError::Process(image_error.to_string()))
+    })
+    .await
+    .map_err(|join_error| AppError::Process(join_error.to_string()))?;
+    conversion
+}
+
+/// The current server icon as a data URL, if one is set.
+#[tauri::command]
+pub async fn get_server_icon(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+) -> AppResult<Option<String>> {
+    use base64::Engine;
+
+    let config = service::find_config(&app, &server_id).await?;
+    let icon_path = state.server_dir(&config).join(SERVER_ICON_FILE);
+    if !icon_path.exists() {
+        return Ok(None);
+    }
+
+    let bytes = std::fs::read(&icon_path)?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Ok(Some(format!("data:image/png;base64,{encoded}")))
+}
+
+#[tauri::command]
+pub async fn remove_server_icon(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+) -> AppResult<()> {
+    let config = service::find_config(&app, &server_id).await?;
+    let icon_path = state.server_dir(&config).join(SERVER_ICON_FILE);
+    if icon_path.exists() {
+        std::fs::remove_file(&icon_path)?;
+    }
+    Ok(())
+}
+
 /// Recovery hammer: kills every Java process Blockparty is responsible for
 /// (tracked or orphaned). Returns how many were terminated.
 #[tauri::command]

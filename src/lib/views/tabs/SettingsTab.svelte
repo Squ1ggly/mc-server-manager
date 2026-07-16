@@ -1,6 +1,8 @@
 <script lang="ts">
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
   import { api, resolveBackupsDir, type Property, type ServerConfig } from "../../api";
+  import { decodeMotdProperty, encodeMotdProperty } from "../../motd";
+  import MotdEditor from "../../components/MotdEditor.svelte";
   import {
     MEMORY_MAX_MB,
     MEMORY_MIN_MB,
@@ -47,12 +49,57 @@
     ),
   );
 
+  // --- Server icon ---
+  let iconDataUrl = $state<string | null>(null);
+
+  const motdValue = $derived(
+    decodeMotdProperty(
+      edited["motd"] ?? properties.find((property) => property.key === "motd")?.value ?? "",
+    ),
+  );
+
   $effect(() => {
     editedName = server.name;
     editedMemoryMb = server.memoryMb;
     editedBackupsDir = server.backupsDir;
     loadProperties(server.id);
+    loadIcon(server.id);
   });
+
+  async function loadIcon(serverId: string) {
+    try {
+      iconDataUrl = await api.getServerIcon(serverId);
+    } catch {
+      iconDataUrl = null;
+    }
+  }
+
+  async function browseIcon() {
+    const picked = await openFolderDialog({
+      title: "Choose a server icon image",
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }],
+    });
+    if (typeof picked !== "string") {
+      return;
+    }
+    try {
+      await api.setServerIcon(server.id, picked);
+      await loadIcon(server.id);
+      toastsStore.success("Server icon updated — applies on the next start 🖼️");
+    } catch (error) {
+      toastsStore.error(String(error));
+    }
+  }
+
+  async function removeIcon() {
+    try {
+      await api.removeServerIcon(server.id);
+      iconDataUrl = null;
+      toastsStore.show("Server icon removed");
+    } catch (error) {
+      toastsStore.error(String(error));
+    }
+  }
 
   async function browseBackupsDir() {
     const picked = await openFolderDialog({
@@ -168,6 +215,40 @@
     </div>
   </section>
 
+  <section class="card">
+    <div class="icon-motd-grid">
+      <div class="icon-block">
+        <h3>🖼️ Server icon</h3>
+        <div class="icon-row">
+          {#if iconDataUrl}
+            <img class="icon-preview" src={iconDataUrl} alt="Server icon" width="64" height="64" />
+          {:else}
+            <div class="icon-placeholder">no icon</div>
+          {/if}
+          <div class="icon-actions">
+            <Button variant="soft" onclick={browseIcon}>Choose image…</Button>
+            {#if iconDataUrl}
+              <Button variant="ghost" onclick={removeIcon}>Remove</Button>
+            {/if}
+          </div>
+        </div>
+        <p class="hint">
+          Any image works — it's resized to the 64×64 the game needs. Shows in the
+          multiplayer list after the next start.
+        </p>
+      </div>
+
+      <div class="motd-block">
+        <h3>💬 MOTD</h3>
+        <MotdEditor
+          value={motdValue}
+          onchange={(text) => setValue("motd", encodeMotdProperty(text))}
+        />
+        <p class="hint">Saves together with the server.properties changes below.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="card props-card">
     <div class="props-head">
       <h3>🗒️ server.properties</h3>
@@ -233,15 +314,65 @@
 </div>
 
 <style>
-  /* Fills the tab exactly: the server card keeps its natural height and the
-     properties card flexes to the remaining space, scrolling its key list
-     internally — no box ever renders taller than the window. */
+  /* The tab grows past the viewport if needed (tab-content scrolls), while
+     the properties list also caps itself so no single box gets absurd. */
   .settings-tab {
-    height: 100%;
+    min-height: 100%;
     display: flex;
     flex-direction: column;
     gap: 1rem;
     padding-bottom: 0.25rem;
+  }
+
+  .icon-motd-grid {
+    display: grid;
+    grid-template-columns: minmax(200px, 240px) 1fr;
+    gap: 1.25rem;
+  }
+
+  .icon-block,
+  .motd-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .icon-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .icon-preview {
+    border-radius: var(--radius-sm);
+    image-rendering: pixelated;
+    box-shadow: 0 0 0 2px rgba(15, 15, 18, 0.35);
+  }
+
+  .icon-placeholder {
+    width: 64px;
+    height: 64px;
+    display: grid;
+    place-items: center;
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.15);
+  }
+
+  .icon-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    align-items: flex-start;
+  }
+
+  @media (max-width: 900px) {
+    .icon-motd-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .card {
@@ -377,8 +508,7 @@
   .props-list {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
+    max-height: 45vh;
     overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);

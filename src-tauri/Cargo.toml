@@ -38,6 +38,8 @@ walkdir = "2.5.0"
 flate2 = "1.1.9"
 tar = "0.4.46"
 sha2 = "0.11.0"
+image = "0.25.10"
+base64 = "0.22.1"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
