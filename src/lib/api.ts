@@ -112,6 +112,7 @@ export const api = {
     invoke<void>("send_server_command", { serverId, command }),
   serverStatuses: () => invoke<Record<string, ServerStatus>>("server_statuses"),
   detectJava: () => invoke<JavaInstall[]>("detect_java"),
+  killAllJava: () => invoke<number>("kill_all_java"),
   getSettings: () => invoke<AppSettings>("get_settings"),
   setServersBaseDir: (path: string) =>
     invoke<AppSettings>("set_servers_base_dir", { path }),

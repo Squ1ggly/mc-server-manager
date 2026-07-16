@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
-use crate::console::{self, ConsoleLine, ConsoleSignal};
+use crate::console::{self, ConsoleLine, ConsoleSignal, ConsoleSpan, LogLevel};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::installers::vanilla::SERVER_JAR_NAME;
@@ -29,6 +29,13 @@ const GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(30);
 
 const LINE_CHANNEL_CAPACITY: usize = 1024;
 const COMMAND_CHANNEL_CAPACITY: usize = 64;
+
+/// Records the running server's PID inside its folder, so a later app
+/// session can reclaim an orphan that survived an app crash or force-kill.
+const PID_FILE_NAME: &str = "blockparty.pid";
+
+/// How long to wait for a killed orphan to release its file locks.
+const ORPHAN_EXIT_WAIT: Duration = Duration::from_secs(5);
 
 /// All currently running server processes, keyed by server id.
 pub type RunningMap = Arc<Mutex<HashMap<String, ProcessHandle>>>;
@@ -89,7 +96,11 @@ pub async fn start(
         return Err(AppError::ServerAlreadyRunning);
     }
 
+    reclaim_orphaned_server(app, &config.id, server_dir).await;
+
     let mut child = spawn_java_process(config, server_dir, java_executable)?;
+    platform::tie_child_to_app_lifetime(&child);
+    write_pid_file(server_dir, child.id());
     let stdin = take_pipe(child.stdin.take())?;
     let stdout = take_pipe(child.stdout.take())?;
     let stderr = take_pipe(child.stderr.take())?;
@@ -124,11 +135,152 @@ pub async fn start(
         app.clone(),
         Arc::clone(running),
         config.id.clone(),
+        server_dir.to_path_buf(),
         child,
         kill_rx,
     ));
 
     Ok(())
+}
+
+/// Kills a previous app session's server process if it is still alive and
+/// holding this world (its PID survives in the server folder). Prevents
+/// "another process has locked a portion of the file" on start.
+async fn reclaim_orphaned_server(app: &AppHandle, server_id: &str, server_dir: &Path) {
+    let Some(orphan_pid) = read_pid_file(server_dir) else {
+        return;
+    };
+
+    let mut system = sysinfo::System::new();
+    let pid = sysinfo::Pid::from_u32(orphan_pid);
+    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+
+    let is_java_process = system
+        .process(pid)
+        .map(|process| {
+            let name = process.name().to_string_lossy().to_lowercase();
+            name.contains("java")
+        })
+        .unwrap_or(false);
+    if !is_java_process {
+        // Process is gone (or the OS reused the PID) — just clean up.
+        remove_pid_file(server_dir);
+        return;
+    }
+
+    if let Some(orphan) = system.process(pid) {
+        orphan.kill();
+    }
+    wait_for_process_exit(&mut system, pid).await;
+    remove_pid_file(server_dir);
+
+    let notice = ConsoleLine {
+        spans: vec![ConsoleSpan {
+            text: format!(
+                "Recovered: terminated an orphaned server process (pid {orphan_pid}) that was still holding this world."
+            ),
+            color: Some("#ffaa00".to_string()),
+            bold: false,
+        }],
+        level: LogLevel::Warn,
+    };
+    let batch = ConsoleBatchEvent {
+        server_id: server_id.to_string(),
+        lines: vec![notice],
+    };
+    emit_event(app, events::SERVER_CONSOLE, batch);
+}
+
+async fn wait_for_process_exit(system: &mut sysinfo::System, pid: sysinfo::Pid) {
+    let poll_interval = Duration::from_millis(250);
+    let attempts = ORPHAN_EXIT_WAIT.as_millis() / poll_interval.as_millis();
+
+    for _ in 0..attempts {
+        tokio::time::sleep(poll_interval).await;
+        system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+        if system.process(pid).is_none() {
+            return;
+        }
+    }
+}
+
+fn write_pid_file(server_dir: &Path, pid: Option<u32>) {
+    let Some(pid) = pid else {
+        return;
+    };
+    if let Err(error) = std::fs::write(server_dir.join(PID_FILE_NAME), pid.to_string()) {
+        eprintln!("could not write pid file: {error}");
+    }
+}
+
+fn read_pid_file(server_dir: &Path) -> Option<u32> {
+    let contents = std::fs::read_to_string(server_dir.join(PID_FILE_NAME)).ok()?;
+    contents.trim().parse().ok()
+}
+
+fn remove_pid_file(server_dir: &Path) {
+    let pid_path = server_dir.join(PID_FILE_NAME);
+    if !pid_path.exists() {
+        return;
+    }
+    if let Err(error) = std::fs::remove_file(&pid_path) {
+        eprintln!("could not remove pid file: {error}");
+    }
+}
+
+/// Emergency recovery: force-kills every Java process that belongs to
+/// Blockparty — running from our managed Java folder, or working inside one
+/// of our server folders. Unrelated Javas (game launchers, IDEs) survive.
+/// Returns how many processes were killed.
+pub async fn kill_all_blockparty_java(
+    managed_java_dir: std::path::PathBuf,
+    server_dirs: Vec<std::path::PathBuf>,
+) -> u32 {
+    let sweep = tokio::task::spawn_blocking(move || {
+        let system = sysinfo::System::new_all();
+
+        let mut killed_count = 0;
+        for process in system.processes().values() {
+            if !is_blockparty_java(process, &managed_java_dir, &server_dirs) {
+                continue;
+            }
+            if process.kill() {
+                killed_count += 1;
+            }
+        }
+        killed_count
+    })
+    .await;
+
+    match sweep {
+        Ok(killed_count) => killed_count,
+        Err(join_error) => {
+            eprintln!("java sweep failed: {join_error}");
+            0
+        }
+    }
+}
+
+fn is_blockparty_java(
+    process: &sysinfo::Process,
+    managed_java_dir: &Path,
+    server_dirs: &[std::path::PathBuf],
+) -> bool {
+    let name = process.name().to_string_lossy().to_lowercase();
+    if !name.contains("java") {
+        return false;
+    }
+
+    let runs_our_java = process
+        .exe()
+        .map(|exe_path| exe_path.starts_with(managed_java_dir))
+        .unwrap_or(false);
+    let works_in_server_dir = process
+        .cwd()
+        .map(|cwd| server_dirs.iter().any(|dir| cwd.starts_with(dir)))
+        .unwrap_or(false);
+
+    runs_our_java || works_in_server_dir
 }
 
 /// Requests a graceful stop (`stop` command) and schedules a force-kill in
@@ -357,6 +509,7 @@ async fn supervise(
     app: AppHandle,
     running: RunningMap,
     server_id: String,
+    server_dir: std::path::PathBuf,
     mut child: Child,
     kill_rx: oneshot::Receiver<()>,
 ) {
@@ -371,6 +524,8 @@ async fn supervise(
             force_kill(&mut child).await
         }
     };
+
+    remove_pid_file(&server_dir);
 
     let stop_was_requested = remove_handle(&running, &server_id).await;
     let final_status = if stop_was_requested || exit_was_clean {

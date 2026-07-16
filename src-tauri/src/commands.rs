@@ -143,6 +143,24 @@ pub async fn detect_java(state: State<'_, AppState>) -> AppResult<Vec<JavaInstal
     Ok(installs)
 }
 
+/// Recovery hammer: kills every Java process Blockparty is responsible for
+/// (tracked or orphaned). Returns how many were terminated.
+#[tauri::command]
+pub async fn kill_all_java(state: State<'_, AppState>) -> AppResult<u32> {
+    let server_dirs: Vec<PathBuf> = {
+        let registry = state.registry.lock().await;
+        registry
+            .servers
+            .iter()
+            .map(|config| state.server_dir(config))
+            .collect()
+    };
+
+    let killed_count =
+        process::kill_all_blockparty_java(state.managed_java_dir(), server_dirs).await;
+    Ok(killed_count)
+}
+
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> AppResult<AppSettings> {
     let settings = state.settings.lock().await;

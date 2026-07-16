@@ -48,6 +48,28 @@
       detectingJava = false;
     }
   }
+
+  let killingJava = $state(false);
+  let confirmingKill = $state(false);
+
+  async function killAllJava() {
+    confirmingKill = false;
+    killingJava = true;
+    try {
+      const killedCount = await api.killAllJava();
+      if (killedCount === 0) {
+        toastsStore.show("No Blockparty server processes found — all clear ✨");
+      } else {
+        toastsStore.success(
+          `Terminated ${killedCount} server process${killedCount === 1 ? "" : "es"} 💀`,
+        );
+      }
+    } catch (error) {
+      toastsStore.error(String(error));
+    } finally {
+      killingJava = false;
+    }
+  }
 </script>
 
 <section class="settings" in:fade={{ duration: 120 }}>
@@ -91,6 +113,29 @@
         {/each}
       </ul>
     {/if}
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>🧯 Recovery</h3>
+      {#if confirmingKill}
+        <span class="confirm-row">
+          <Button variant="danger" disabled={killingJava} onclick={killAllJava}>
+            Really kill them all?
+          </Button>
+          <Button variant="ghost" onclick={() => (confirmingKill = false)}>Cancel</Button>
+        </span>
+      {:else}
+        <Button variant="danger" disabled={killingJava} onclick={() => (confirmingKill = true)}>
+          {killingJava ? "Sweeping…" : "💀 Kill all server processes"}
+        </Button>
+      {/if}
+    </div>
+    <p class="hint">
+      Force-kills every Java process Blockparty is responsible for — running servers
+      and orphans left behind by a crash. Use this if a world says it's locked by
+      another process. Your Minecraft game and launcher are not touched.
+    </p>
   </div>
 </section>
 
@@ -175,5 +220,10 @@
   .java-list .path {
     flex: 1;
     min-width: 0;
+  }
+
+  .confirm-row {
+    display: flex;
+    gap: 0.5rem;
   }
 </style>
