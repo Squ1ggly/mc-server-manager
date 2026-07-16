@@ -88,29 +88,32 @@ pub struct ServerConfig {
     pub created_at_unix: u64,
 }
 
-/// The full set of managed servers, persisted as one JSON file.
-#[derive(Debug, Default, Serialize, Deserialize)]
+/// Each server's settings live in its own folder as YAML — a fixed file
+/// name, so renaming the server never orphans it (and it travels inside
+/// backups automatically).
+pub const SERVER_SETTINGS_FILE: &str = "blockparty-server.yaml";
+
+/// The in-memory set of managed servers, assembled from each server
+/// folder's own settings YAML at startup.
+#[derive(Debug, Default)]
 pub struct ServerRegistry {
     pub servers: Vec<ServerConfig>,
 }
 
 impl ServerRegistry {
-    /// Loads the registry from disk, returning an empty registry when the
-    /// file does not exist yet (first launch).
-    pub fn load(path: &Path) -> AppResult<Self> {
-        if !path.exists() {
-            return Ok(Self::default());
+    /// Builds the registry by reading every known server folder's YAML.
+    /// Folders that vanished or lost their file are skipped with a warning.
+    pub fn load_from_dirs(server_dirs: &[PathBuf]) -> Self {
+        let mut servers = Vec::new();
+        for dir in server_dirs {
+            match load_server_settings(dir) {
+                Ok(config) => servers.push(config),
+                Err(error) => {
+                    eprintln!("skipping server folder {}: {error}", dir.display());
+                }
+            }
         }
-
-        let file_contents = std::fs::read_to_string(path)?;
-        let registry = serde_json::from_str(&file_contents)?;
-        Ok(registry)
-    }
-
-    pub fn save(&self, path: &Path) -> AppResult<()> {
-        let serialized = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, serialized)?;
-        Ok(())
+        Self { servers }
     }
 
     pub fn find(&self, server_id: &str) -> AppResult<&ServerConfig> {
@@ -131,6 +134,24 @@ impl ServerRegistry {
         let removed = self.servers.remove(position);
         Some(removed)
     }
+}
+
+/// Writes a server's settings YAML into its own folder.
+pub fn save_server_settings(config: &ServerConfig) -> AppResult<()> {
+    let serialized = serde_yaml::to_string(config)
+        .map_err(|yaml_error| AppError::Process(yaml_error.to_string()))?;
+    std::fs::write(config.dir.join(SERVER_SETTINGS_FILE), serialized)?;
+    Ok(())
+}
+
+/// Reads a server's settings YAML, healing the stored `dir` to wherever the
+/// folder actually is now (folders can be moved between sessions).
+pub fn load_server_settings(server_dir: &Path) -> AppResult<ServerConfig> {
+    let contents = std::fs::read_to_string(server_dir.join(SERVER_SETTINGS_FILE))?;
+    let mut config: ServerConfig = serde_yaml::from_str(&contents)
+        .map_err(|yaml_error| AppError::Process(yaml_error.to_string()))?;
+    config.dir = server_dir.to_path_buf();
+    Ok(config)
 }
 
 /// Validated request to create a new server.

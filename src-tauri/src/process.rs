@@ -435,6 +435,8 @@ fn build_launch_command(
 
     let mut command = Command::new(java_executable);
     command.args([&max_heap_flag, &min_heap_flag]);
+    // Loader-specific flags the server can't start without.
+    command.args(required_loader_flags(config.loader));
     if let Some(java_args) = &config.java_args {
         command.args(java_args.split_whitespace());
     }
@@ -451,6 +453,17 @@ fn build_launch_command(
         command.arg("nogui");
     }
     Ok(command)
+}
+
+/// JVM flags a loader requires to boot at all.
+fn required_loader_flags(loader: Loader) -> &'static [&'static str] {
+    match loader {
+        // Quilt's server-launch jar needs mappings; without them it dies
+        // with "target namespace intermediary not loaded". Telling it to
+        // run against the official namespace is the supported workaround.
+        Loader::Quilt => &["-Dloader.experimental.minecraft.targetNamespace=official"],
+        _ => &[],
+    }
 }
 
 fn launch_target(loader: Loader, server_dir: &Path) -> LaunchTarget {
@@ -604,6 +617,10 @@ async fn ingest_line(
         Some(ConsoleSignal::PlayerKicked(player_name)) => {
             let state = app.state::<crate::state::AppState>();
             state.rosters.record_kick(server_id, &player_name).await;
+        }
+        Some(ConsoleSignal::ChatMessage { player, message }) => {
+            let state = app.state::<crate::state::AppState>();
+            state.rosters.record_chat(server_id, &player, &message).await;
         }
         None => {}
     }

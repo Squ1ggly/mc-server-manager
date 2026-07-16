@@ -113,6 +113,29 @@ export interface RosterEntry {
   totalPlaySeconds: number;
 }
 
+export interface ChatEntry {
+  atUnix: number;
+  message: string;
+}
+
+export interface PlayerDetail {
+  name: string;
+  online: boolean;
+  banned: boolean;
+  firstJoinedUnix: number;
+  lastSeenUnix: number;
+  joinCount: number;
+  kickCount: number;
+  chatCount: number;
+  totalPlaySeconds: number;
+  recentChat: ChatEntry[];
+}
+
+export interface ServerAddress {
+  lanIp: string;
+  port: string;
+}
+
 export interface UpdateServerRequest {
   name: string;
   memoryMb: number;
@@ -150,6 +173,10 @@ export const api = {
   serverPlayers: () => invoke<Record<string, string[]>>("server_players"),
   getPlayerRoster: (serverId: string) =>
     invoke<RosterEntry[]>("get_player_roster", { serverId }),
+  getPlayerDetail: (serverId: string, playerName: string) =>
+    invoke<PlayerDetail | null>("get_player_detail", { serverId, playerName }),
+  getServerAddress: (serverId: string) =>
+    invoke<ServerAddress>("get_server_address", { serverId }),
   updateServer: (serverId: string, request: UpdateServerRequest) =>
     invoke<ServerConfig>("update_server", { serverId, request }),
   setServerIcon: (serverId: string, sourcePath: string) =>

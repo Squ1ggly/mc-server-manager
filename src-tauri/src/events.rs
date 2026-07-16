@@ -15,3 +15,6 @@ pub const SERVER_PLAYERS: &str = "server:players";
 
 /// Periodic resource usage sample: [`crate::stats::StatsEvent`].
 pub const SERVER_STATS: &str = "server:stats";
+
+/// A backup finished for a server (payload: the server id string).
+pub const BACKUP_CREATED: &str = "server:backup-created";

@@ -1,6 +1,6 @@
 // MOTD (§-code) helpers: parsing for live preview, plus the escaping that
-// server.properties needs (Java reads it as latin-1, so a raw UTF-8 '§'
-// would be mangled — the file stores § escapes instead).
+// server.properties needs. Java reads the file as latin-1, so § is stored
+// as the escape §, and a second MOTD line is stored as a literal \n.
 
 export const MOTD_COLORS: { code: string; name: string; hex: string }[] = [
   { code: "0", name: "Black", hex: "#000000" },
@@ -21,6 +21,15 @@ export const MOTD_COLORS: { code: string; name: string; hex: string }[] = [
   { code: "f", name: "White", hex: "#FFFFFF" },
 ];
 
+export const MOTD_FORMATS: { code: string; label: string; title: string }[] = [
+  { code: "l", label: "B", title: "Bold" },
+  { code: "o", label: "I", title: "Italic" },
+  { code: "n", label: "U", title: "Underline" },
+  { code: "m", label: "S", title: "Strikethrough" },
+  { code: "k", label: "K", title: "Obfuscated (magic)" },
+  { code: "r", label: "⟲", title: "Reset formatting" },
+];
+
 export interface MotdSpan {
   text: string;
   color?: string;
@@ -28,12 +37,24 @@ export interface MotdSpan {
   italic: boolean;
   underline: boolean;
   strike: boolean;
+  obfuscated: boolean;
 }
 
-/** Parses §-coded text into styled spans for the preview. */
-export function parseMotd(text: string): MotdSpan[] {
+function blankSpan(): MotdSpan {
+  return {
+    text: "",
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    obfuscated: false,
+  };
+}
+
+/** Parses one line of §-coded text into styled spans for the preview. */
+export function parseMotdLine(text: string): MotdSpan[] {
   const spans: MotdSpan[] = [];
-  let current: MotdSpan = { text: "", bold: false, italic: false, underline: false, strike: false };
+  let current = blankSpan();
 
   const flush = () => {
     if (current.text !== "") {
@@ -55,14 +76,7 @@ export function parseMotd(text: string): MotdSpan[] {
     flush();
     if (colorEntry) {
       // A color code resets formatting, exactly like the game does.
-      current = {
-        text: "",
-        color: colorEntry.hex,
-        bold: false,
-        italic: false,
-        underline: false,
-        strike: false,
-      };
+      current = { ...blankSpan(), color: colorEntry.hex };
     } else if (code === "l") {
       current.bold = true;
     } else if (code === "o") {
@@ -71,8 +85,11 @@ export function parseMotd(text: string): MotdSpan[] {
       current.underline = true;
     } else if (code === "m") {
       current.strike = true;
+    } else if (code === "k") {
+      current.obfuscated = true;
     } else if (code === "r") {
-      current = { text: "", bold: false, italic: false, underline: false, strike: false };
+      current = { ...blankSpan(), color: current.color };
+      current.color = undefined;
     }
   }
 
@@ -80,12 +97,20 @@ export function parseMotd(text: string): MotdSpan[] {
   return spans;
 }
 
+/** Splits an editor-form MOTD into its (up to two) rendered lines. */
+export function parseMotd(text: string): MotdSpan[][] {
+  return text.split("\n").map(parseMotdLine);
+}
+
 /** server.properties form (§ escapes, literal \n) -> editor form. */
 export function decodeMotdProperty(stored: string): string {
-  return stored.replaceAll("\\u00A7", "§").replaceAll("\\u00a7", "§");
+  return stored
+    .replaceAll("\\u00A7", "§")
+    .replaceAll("\\u00a7", "§")
+    .replaceAll("\\n", "\n");
 }
 
 /** Editor form -> server.properties form. */
 export function encodeMotdProperty(editorText: string): string {
-  return editorText.replaceAll("§", "\\u00A7");
+  return editorText.replaceAll("§", "\\u00A7").replaceAll("\n", "\\n");
 }

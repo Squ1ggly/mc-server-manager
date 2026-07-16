@@ -35,6 +35,7 @@
   let editedRetention = $state("");
   let javaInstalls = $state<JavaInstall[]>([]);
   let savingConfig = $state(false);
+  let advancedOpen = $state(false);
 
   const isBedrock = $derived(server.loader === "bds");
 
@@ -235,34 +236,42 @@
             {/each}
           </select>
         </label>
-        <label>
-          <span>Backup retention (empty = keep all)</span>
-          <input type="number" min="1" bind:value={editedRetention} placeholder="keep all" />
-        </label>
-        <label class="wide">
-          <span>Extra JVM arguments</span>
-          <input
-            type="text"
-            bind:value={editedJavaArgs}
-            placeholder="-XX:+UseG1GC"
-            spellcheck="false"
-          />
-        </label>
-      {:else}
-        <label>
-          <span>Backup retention (empty = keep all)</span>
-          <input type="number" min="1" bind:value={editedRetention} placeholder="keep all" />
-        </label>
       {/if}
-      <label class="wide">
-        <span>Custom start command (overrides everything)</span>
-        <input
-          type="text"
-          bind:value={editedStartCommand}
-          placeholder="java -Xmx4G -jar server.jar nogui"
-          spellcheck="false"
-        />
+      <label>
+        <span>Backup retention (empty = keep all)</span>
+        <input type="number" min="1" bind:value={editedRetention} placeholder="keep all" />
       </label>
+    </div>
+
+    <div class="advanced">
+      <button type="button" class="advanced-toggle" onclick={() => (advancedOpen = !advancedOpen)}>
+        <span class="chevron" class:open={advancedOpen}>▸</span>
+        🛠️ Advanced launch
+      </button>
+      {#if advancedOpen}
+        <div class="advanced-body">
+          {#if !isBedrock}
+            <label>
+              <span>Extra JVM arguments</span>
+              <input
+                type="text"
+                bind:value={editedJavaArgs}
+                placeholder="-XX:+UseG1GC"
+                spellcheck="false"
+              />
+            </label>
+          {/if}
+          <label>
+            <span>Custom start command (overrides everything)</span>
+            <input
+              type="text"
+              bind:value={editedStartCommand}
+              placeholder="java -Xmx4G -jar server.jar nogui"
+              spellcheck="false"
+            />
+          </label>
+        </div>
+      {/if}
     </div>
     <div class="backups-row">
       <span class="backups-label">🎁 Backups folder</span>
@@ -383,14 +392,14 @@
 </div>
 
 <style>
-  /* The tab grows past the viewport if needed (tab-content scrolls), while
-     the properties list also caps itself so no single box gets absurd. */
+  /* One scroll context: the whole tab scrolls inside tab-content, so there
+     is no nested-scroll dead zone and the Save buttons are always
+     reachable. */
   .settings-tab {
-    min-height: 100%;
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    padding-bottom: 0.25rem;
+    padding-bottom: 1.5rem;
   }
 
   .icon-motd-grid {
@@ -450,14 +459,6 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-soft);
     padding: 1rem 1.25rem;
-    flex-shrink: 0;
-  }
-
-  .props-card {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
   }
 
   h3 {
@@ -471,8 +472,42 @@
     gap: 0.9rem;
   }
 
-  .config-grid .wide {
-    grid-column: 1 / -1;
+  .advanced {
+    margin-top: 0.9rem;
+  }
+
+  .advanced-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .advanced-toggle:hover {
+    color: var(--text);
+  }
+
+  .chevron {
+    display: inline-block;
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+
+  .chevron.open {
+    transform: rotate(90deg);
+  }
+
+  .advanced-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
   }
 
   label {
@@ -581,8 +616,6 @@
   .props-list {
     display: flex;
     flex-direction: column;
-    max-height: 45vh;
-    overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
   }

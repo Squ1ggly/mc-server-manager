@@ -5,6 +5,7 @@
   import { toastsStore } from "../../stores/toasts.svelte";
   import { formatDateTime, formatUptime } from "../../format";
   import Button from "../../components/Button.svelte";
+  import PlayerDetailModal from "../../components/PlayerDetailModal.svelte";
 
   interface Props {
     server: ServerConfig;
@@ -15,6 +16,7 @@
   let manualName = $state("");
   let historyOpen = $state(false);
   let roster = $state<RosterEntry[]>([]);
+  let inspectedPlayer = $state<string | null>(null);
 
   const status = $derived(serversStore.statusOf(server.id));
   const players = $derived(serversStore.playersOf(server.id));
@@ -118,7 +120,9 @@
             loading="lazy"
             onerror={(event) => ((event.currentTarget as HTMLImageElement).style.display = "none")}
           />
-          <span class="player-name">{player}</span>
+          <button class="player-name link" onclick={() => (inspectedPlayer = player)}>
+            {player}
+          </button>
           <span class="player-actions">
             <Button
               variant="soft"
@@ -172,32 +176,42 @@
           <ul class="history-list">
             {#each roster as entry (entry.name)}
               <li>
-                <img
-                  src="https://mc-heads.net/avatar/{entry.name}/28"
-                  alt=""
-                  width="28"
-                  height="28"
-                  loading="lazy"
-                  onerror={(event) =>
-                    ((event.currentTarget as HTMLImageElement).style.display = "none")}
-                />
-                <span class="entry-name">{entry.name}</span>
-                {#if entry.online}
-                  <span class="badge online">🟢 Online</span>
-                {/if}
-                {#if entry.banned}
-                  <span class="badge banned">🔨 Banned</span>
-                {/if}
-                <span class="entry-stats">
-                  ⏱ {formatUptime(entry.totalPlaySeconds)}
-                  · 🚪 {entry.joinCount} join{entry.joinCount === 1 ? "" : "s"}
-                  {#if entry.kickCount > 0}
-                    · 👢 {entry.kickCount} kick{entry.kickCount === 1 ? "" : "s"}
+                <button class="entry-main" onclick={() => (inspectedPlayer = entry.name)}>
+                  <img
+                    src="https://mc-heads.net/avatar/{entry.name}/28"
+                    alt=""
+                    width="28"
+                    height="28"
+                    loading="lazy"
+                    onerror={(event) =>
+                      ((event.currentTarget as HTMLImageElement).style.display = "none")}
+                  />
+                  <span class="entry-name">{entry.name}</span>
+                  {#if entry.online}
+                    <span class="badge online">🟢 Online</span>
                   {/if}
-                </span>
-                <span class="entry-seen" title="Last seen">
-                  {entry.online ? "playing now" : formatDateTime(entry.lastSeenUnix)}
-                </span>
+                  {#if entry.banned}
+                    <span class="badge banned">🔨 Banned</span>
+                  {/if}
+                  <span class="entry-stats">
+                    ⏱ {formatUptime(entry.totalPlaySeconds)}
+                    · 🚪 {entry.joinCount} join{entry.joinCount === 1 ? "" : "s"}
+                    {#if entry.kickCount > 0}
+                      · 👢 {entry.kickCount} kick{entry.kickCount === 1 ? "" : "s"}
+                    {/if}
+                  </span>
+                </button>
+                {#if entry.banned && !isBedrock}
+                  <Button
+                    variant="soft"
+                    disabled={!canCommand}
+                    title={canCommand ? "" : "Start the server to pardon"}
+                    onclick={() =>
+                      sendPlayerCommand(`pardon ${entry.name}`, `Pardoned ${entry.name} 🕊️`)}
+                  >
+                    🕊️ Pardon
+                  </Button>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -205,8 +219,14 @@
       </div>
     {/if}
   </div>
-
 </div>
+
+<PlayerDetailModal
+  serverId={server.id}
+  playerName={inspectedPlayer}
+  {canCommand}
+  onclose={() => (inspectedPlayer = null)}
+/>
 
 <style>
   .players-tab {

@@ -69,3 +69,8 @@ export function onPlayersChange(handler: (event: PlayersEvent) => void): Promise
 export function onStats(handler: (event: StatsEvent) => void): Promise<UnlistenFn> {
   return listen<StatsEvent>("server:stats", (event) => handler(event.payload));
 }
+
+/** Fires with the server id when a backup finishes. */
+export function onBackupCreated(handler: (serverId: string) => void): Promise<UnlistenFn> {
+  return listen<string>("server:backup-created", (event) => handler(event.payload));
+}

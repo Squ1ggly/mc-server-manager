@@ -3,6 +3,7 @@
   // browser skip layout/paint for offscreen lines, so the full 5000-line
   // buffer stays smooth without manual virtualization.
 
+  import { onMount } from "svelte";
   import type { ConsoleLine } from "../events";
 
   interface Props {
@@ -22,11 +23,30 @@
     stickToBottom = distanceFromBottom < 40;
   }
 
+  function scrollToBottom() {
+    if (!viewport) {
+      return;
+    }
+    // Double rAF: content-visibility means heights settle a frame late, so
+    // scrolling immediately would land short of the true bottom.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (viewport) {
+          viewport.scrollTop = viewport.scrollHeight;
+        }
+      });
+    });
+  }
+
+  // Jump to the newest output the moment the console is shown, even when no
+  // new line arrives after navigation.
+  onMount(scrollToBottom);
+
   $effect(() => {
     // Follow new output unless the user scrolled up to read history.
     void lines.length;
-    if (stickToBottom && viewport) {
-      viewport.scrollTop = viewport.scrollHeight;
+    if (stickToBottom) {
+      scrollToBottom();
     }
   });
 </script>

@@ -30,6 +30,47 @@ pub fn read(server_dir: &Path) -> AppResult<Vec<Property>> {
     Ok(properties)
 }
 
+/// A complete default `server.properties`, so the file is fully populated
+/// the moment a server is created. Without this the file is generated on
+/// first start, which can clobber edits the user made in between.
+const DEFAULT_PROPERTIES: &str = "\
+allow-flight=false
+allow-nether=true
+difficulty=easy
+enable-command-block=false
+enforce-secure-profile=true
+enforce-whitelist=false
+force-gamemode=false
+gamemode=survival
+generate-structures=true
+hardcore=false
+hide-online-players=false
+level-name=world
+level-seed=
+level-type=minecraft\\:normal
+max-players=20
+max-world-size=29999984
+motd=A Minecraft Server
+online-mode=true
+pvp=true
+simulation-distance=10
+spawn-monsters=true
+spawn-protection=16
+view-distance=10
+white-list=false
+";
+
+/// Writes the default `server.properties` if none exists yet. Called at
+/// creation for game servers.
+pub fn ensure_defaults(server_dir: &Path) -> AppResult<()> {
+    let file_path = server_dir.join(PROPERTIES_FILE_NAME);
+    if file_path.exists() {
+        return Ok(());
+    }
+    std::fs::write(file_path, DEFAULT_PROPERTIES)?;
+    Ok(())
+}
+
 /// Applies updated values to the file, keeping comments, ordering, and any
 /// keys the update doesn't mention. Unknown new keys are appended.
 pub fn write(server_dir: &Path, updates: &[Property]) -> AppResult<()> {

@@ -71,18 +71,30 @@ pub async fn create_server(
         return Err(error);
     }
 
-    if !request.loader.is_proxy() {
+    if !request.loader.is_proxy() && request.loader != Loader::Bds {
         servers::write_eula_acceptance(&server_dir)?;
-        let port_property = vec![Property {
-            key: "server-port".to_string(),
-            value: request.port.to_string(),
-        }];
-        properties::write(&server_dir, &port_property)?;
+        // Pre-generate a full server.properties so the file is complete
+        // before first start — otherwise the server generates it and can
+        // discard edits made in between.
+        properties::ensure_defaults(&server_dir)?;
+        let port_properties = vec![
+            Property {
+                key: "server-port".to_string(),
+                value: request.port.to_string(),
+            },
+            Property {
+                key: "query.port".to_string(),
+                value: request.port.to_string(),
+            },
+        ];
+        properties::write(&server_dir, &port_properties)?;
     }
 
-    let mut registry = state.registry.lock().await;
-    registry.add(config.clone());
-    registry.save(&state.registry_path())?;
+    {
+        let mut registry = state.registry.lock().await;
+        registry.add(config.clone());
+    }
+    state.persist_new_server(&config).await?;
     Ok(config)
 }
 
@@ -120,14 +132,13 @@ pub async fn delete_server(state: State<'_, AppState>, server_id: String) -> App
 
     let removed_config = {
         let mut registry = state.registry.lock().await;
-        let removed = registry
+        registry
             .remove(&server_id)
-            .ok_or_else(|| AppError::ServerNotFound(server_id.clone()))?;
-        registry.save(&state.registry_path())?;
-        removed
+            .ok_or_else(|| AppError::ServerNotFound(server_id.clone()))?
     };
 
     let server_dir = state.server_dir(&removed_config);
+    state.persist_removed_server(&server_dir).await?;
     if server_dir.exists() {
         std::fs::remove_dir_all(&server_dir)?;
     }
@@ -381,8 +392,9 @@ pub async fn update_server(
     config.start_command = servers::normalized_option(&request.start_command);
     config.backup_retention = request.backup_retention;
     let updated = config.clone();
+    drop(registry);
 
-    registry.save(&state.registry_path())?;
+    servers::save_server_settings(&updated)?;
     Ok(updated)
 }
 
@@ -413,6 +425,78 @@ pub async fn get_player_roster(
         .entries(&server_id, &online_players, &banned_names)
         .await;
     Ok(entries)
+}
+
+/// The address players connect to: this machine's LAN IP and the server's
+/// configured port.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerAddress {
+    pub lan_ip: String,
+    pub port: String,
+}
+
+#[tauri::command]
+pub async fn get_server_address(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+) -> AppResult<ServerAddress> {
+    let config = service::find_config(&app, &server_id).await?;
+    let server_dir = state.server_dir(&config);
+
+    let properties = properties::read(&server_dir)?;
+    let port = properties
+        .iter()
+        .find(|property| property.key == "server-port")
+        .map(|property| property.value.clone())
+        .unwrap_or_else(|| "25565".to_string());
+
+    let address = ServerAddress {
+        lan_ip: local_lan_ip(),
+        port,
+    };
+    Ok(address)
+}
+
+/// This machine's LAN IP, found by asking the OS which local address it
+/// would use to reach the internet (no packet is actually sent).
+fn local_lan_ip() -> String {
+    let fallback = "127.0.0.1".to_string();
+    let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") else {
+        return fallback;
+    };
+    if socket.connect("8.8.8.8:80").is_err() {
+        return fallback;
+    }
+    match socket.local_addr() {
+        Ok(address) => address.ip().to_string(),
+        Err(_) => fallback,
+    }
+}
+
+/// Full detail for one player, for the player page.
+#[tauri::command]
+pub async fn get_player_detail(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    player_name: String,
+) -> AppResult<Option<roster::PlayerDetail>> {
+    let config = service::find_config(&app, &server_id).await?;
+
+    let online_by_server = process::players(&state.running).await;
+    let online_players = online_by_server
+        .get(&server_id)
+        .cloned()
+        .unwrap_or_default();
+    let banned_names = roster::read_banned_names(&state.server_dir(&config));
+
+    let detail = state
+        .rosters
+        .detail(&server_id, &player_name, &online_players, &banned_names)
+        .await;
+    Ok(detail)
 }
 
 #[tauri::command]

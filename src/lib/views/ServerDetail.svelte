@@ -51,11 +51,14 @@
   }
 
   async function deleteServer() {
+    const deletedName = server.name;
     await run(async () => {
       await api.deleteServer(server.id);
-      await serversStore.refresh();
-      toastsStore.show(`"${server.name}" was deleted 🗑️`);
+      // Leave this view before the refresh drops the server from the list,
+      // or the derived `server` becomes null while we still render it.
       onback();
+      await serversStore.refresh();
+      toastsStore.show(`"${deletedName}" was deleted 🗑️`);
     });
   }
 </script>

@@ -1,7 +1,7 @@
 //! Server backups: zipping a server directory into the app's backups folder,
 //! listing, restoring, and deleting archives.
 
-use std::io::{Read, Seek, Write};
+use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -153,6 +153,12 @@ fn add_zip_entry<W: Write + Seek>(
         return Ok(());
     }
 
+    // The world lock is held (and range-locked on Windows) while the server
+    // runs — it's meaningless in a backup anyway.
+    if entry_path.file_name().is_some_and(|name| name == "session.lock") {
+        return Ok(());
+    }
+
     // Zip entries always use forward slashes, regardless of platform.
     let entry_name = relative.to_string_lossy().replace('\\', "/");
 
@@ -161,17 +167,30 @@ fn add_zip_entry<W: Write + Seek>(
         return Ok(());
     }
 
+    // Read the whole file up front: a live server may hold byte-range locks
+    // (os error 33 on Windows), and reading first means a locked file skips
+    // cleanly instead of aborting mid-archive with a corrupt zip.
+    let contents = match std::fs::read(entry_path) {
+        Ok(bytes) => bytes,
+        Err(read_error) => {
+            eprintln!(
+                "backup: skipping locked/unreadable file {}: {read_error}",
+                entry_path.display()
+            );
+            return Ok(());
+        }
+    };
+
     writer.start_file(entry_name, options)?;
-    let mut source_file = std::fs::File::open(entry_path)?;
-    copy_into_zip(&mut source_file, writer)?;
+    write_into_zip(&contents, writer)?;
     Ok(())
 }
 
-fn copy_into_zip<R: Read, W: Write + Seek>(
-    source: &mut R,
+fn write_into_zip<W: Write + Seek>(
+    contents: &[u8],
     writer: &mut zip::ZipWriter<W>,
 ) -> AppResult<()> {
-    std::io::copy(source, writer)?;
+    writer.write_all(contents)?;
     Ok(())
 }
 

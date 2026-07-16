@@ -11,6 +11,17 @@ use tokio::sync::Mutex;
 use crate::error::AppResult;
 use crate::servers::current_unix_time;
 
+/// The most recent chat lines kept per player.
+const MAX_CHAT_HISTORY: usize = 200;
+
+/// One remembered chat line.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatEntry {
+    pub at_unix: u64,
+    pub message: String,
+}
+
 /// Everything remembered about one player on one server.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +31,27 @@ pub struct PlayerRecord {
     pub join_count: u32,
     pub kick_count: u32,
     pub total_play_seconds: u64,
+    #[serde(default)]
+    pub chat_count: u32,
+    #[serde(default)]
+    pub chat_log: Vec<ChatEntry>,
+}
+
+/// Full detail for one player, for the player page.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerDetail {
+    pub name: String,
+    pub online: bool,
+    pub banned: bool,
+    pub first_joined_unix: u64,
+    pub last_seen_unix: u64,
+    pub join_count: u32,
+    pub kick_count: u32,
+    pub chat_count: u32,
+    pub total_play_seconds: u64,
+    /// Newest chat lines first.
+    pub recent_chat: Vec<ChatEntry>,
 }
 
 /// One server's player history plus the sessions currently in progress.
@@ -94,6 +126,61 @@ impl RosterStore {
         record.kick_count += 1;
 
         self.save(server_id, roster);
+    }
+
+    pub async fn record_chat(&self, server_id: &str, player_name: &str, message: &str) {
+        let now = current_unix_time();
+        let mut rosters = self.by_server.lock().await;
+        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+
+        let record = roster.players.entry(player_name.to_string()).or_default();
+        record.chat_count += 1;
+        record.chat_log.push(ChatEntry {
+            at_unix: now,
+            message: message.to_string(),
+        });
+        if record.chat_log.len() > MAX_CHAT_HISTORY {
+            let overflow = record.chat_log.len() - MAX_CHAT_HISTORY;
+            record.chat_log.drain(0..overflow);
+        }
+
+        self.save(server_id, roster);
+    }
+
+    /// Full detail for one player, for the player page.
+    pub async fn detail(
+        &self,
+        server_id: &str,
+        player_name: &str,
+        online_players: &[String],
+        banned_names: &[String],
+    ) -> Option<PlayerDetail> {
+        let now = current_unix_time();
+        let mut rosters = self.by_server.lock().await;
+        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+
+        let record = roster.players.get(player_name)?;
+        let live_session_seconds = roster
+            .active_sessions
+            .get(player_name)
+            .map(|start| now.saturating_sub(*start))
+            .unwrap_or(0);
+
+        let mut recent_chat = record.chat_log.clone();
+        recent_chat.reverse();
+
+        Some(PlayerDetail {
+            name: player_name.to_string(),
+            online: online_players.iter().any(|p| p == player_name),
+            banned: banned_names.iter().any(|b| b == player_name),
+            first_joined_unix: record.first_joined_unix,
+            last_seen_unix: record.last_seen_unix,
+            join_count: record.join_count,
+            kick_count: record.kick_count,
+            chat_count: record.chat_count,
+            total_play_seconds: record.total_play_seconds + live_session_seconds,
+            recent_chat,
+        })
     }
 
     /// Ends every open session — called when the server process exits.

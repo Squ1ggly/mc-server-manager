@@ -41,6 +41,8 @@ pub enum ConsoleSignal {
     PlayerLeft(String),
     /// "Kicked <name>: <reason>" — logged when a player is kicked.
     PlayerKicked(String),
+    /// `<Name> message` — a chat message.
+    ChatMessage { player: String, message: String },
 }
 
 /// Parses one raw output line into its display form and any state-change
@@ -62,14 +64,18 @@ pub fn analyze(raw_line: &str) -> (ConsoleLine, Option<ConsoleSignal>) {
     (line, signal)
 }
 
+/// Vanilla logs `[HH:MM:SS] [Server thread/INFO]:`; Paper-family logs
+/// `[HH:MM:SS INFO]:` — cover both bracket shapes.
 pub fn parse_log_level(line: &str) -> LogLevel {
-    let is_error =
-        line.contains("/ERROR]") || line.contains("/FATAL]") || line.starts_with("Error");
+    let is_error = line.contains("ERROR]")
+        || line.contains("FATAL]")
+        || line.starts_with("Error")
+        || line.contains("SEVERE]");
     if is_error {
         return LogLevel::Error;
     }
 
-    let is_warning = line.contains("/WARN]") || line.starts_with("WARNING");
+    let is_warning = line.contains("WARN]") || line.starts_with("WARNING");
     if is_warning {
         return LogLevel::Warn;
     }
@@ -103,8 +109,26 @@ pub fn parse_signal(line: &str) -> Option<ConsoleSignal> {
     if let Some(player_name) = kicked_player_name(message) {
         return Some(ConsoleSignal::PlayerKicked(player_name));
     }
+    if let Some((player, chat)) = chat_message(message) {
+        return Some(ConsoleSignal::ChatMessage {
+            player,
+            message: chat,
+        });
+    }
 
     None
+}
+
+/// Matches chat lines of the shape `<Name> message`.
+fn chat_message(message: &str) -> Option<(String, String)> {
+    let after_open = message.strip_prefix('<')?;
+    let (name, rest) = after_open.split_once("> ")?;
+
+    let is_player_name = !name.is_empty() && !name.contains('<') && !name.contains(' ');
+    if !is_player_name {
+        return None;
+    }
+    Some((name.to_string(), rest.to_string()))
 }
 
 /// Bedrock logs `... Player connected: <gamertag>, xuid: <id>` — gamertags
@@ -171,16 +195,23 @@ fn is_unstyled(spans: &[ConsoleSpan]) -> bool {
     !has_style
 }
 
-/// Colors the `[time] [thread/LEVEL]:` prefix of standard log lines so plain
-/// vanilla output still reads well. The message body keeps the line-level
-/// default color.
+/// Colors the log prefix of standard lines so plain output still reads well:
+/// vanilla's `[time] [thread/LEVEL]:` and Paper's `[time LEVEL]:` shapes are
+/// both handled. The message body keeps the line-level default color.
 fn highlight_plain(plain_text: &str, level: LogLevel) -> Vec<ConsoleSpan> {
     let mut spans: Vec<ConsoleSpan> = Vec::new();
     let mut remaining = plain_text;
 
-    if let Some((timestamp, after_timestamp)) = split_bracket_prefix(remaining) {
-        spans.push(plain_span(timestamp, Some(TIMESTAMP_COLOR)));
-        remaining = after_timestamp;
+    if let Some((first_tag, after_first)) = split_bracket_prefix(remaining) {
+        // Paper folds the level into the first bracket; vanilla keeps a
+        // plain timestamp there.
+        let first_color = if contains_level_word(first_tag) {
+            level_tag_color(level)
+        } else {
+            TIMESTAMP_COLOR
+        };
+        spans.push(plain_span(first_tag, Some(first_color)));
+        remaining = after_first;
 
         if let Some((thread_tag, after_tag)) = split_bracket_prefix(remaining) {
             spans.push(plain_span(thread_tag, Some(level_tag_color(level))));
@@ -192,6 +223,11 @@ fn highlight_plain(plain_text: &str, level: LogLevel) -> Vec<ConsoleSpan> {
         spans.push(plain_span(remaining, None));
     }
     spans
+}
+
+fn contains_level_word(text: &str) -> bool {
+    const LEVEL_WORDS: [&str; 6] = ["INFO]", "WARN]", "ERROR]", "FATAL]", "DEBUG]", "TRACE]"];
+    LEVEL_WORDS.iter().any(|word| text.contains(word))
 }
 
 fn plain_span(text: &str, color: Option<&str>) -> ConsoleSpan {

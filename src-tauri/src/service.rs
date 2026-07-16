@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::backups::{self, BackupInfo};
 use crate::error::{AppError, AppResult};
@@ -133,6 +133,11 @@ pub async fn create_backup(app: &AppHandle, server_id: &str) -> AppResult<Backup
         if pruned > 0 {
             eprintln!("pruned {pruned} old backup(s) for {server_id}");
         }
+    }
+
+    // Let any open Backups tab refresh its (possibly stale) list.
+    if let Err(error) = app.emit(crate::events::BACKUP_CREATED, server_id.to_string()) {
+        eprintln!("failed to emit backup-created event: {error}");
     }
     Ok(created)
 }

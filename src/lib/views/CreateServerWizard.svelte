@@ -196,6 +196,15 @@
   );
 
   $effect(() => {
+    // Keep the selection valid when the snapshot filter changes: if the
+    // chosen version just got hidden, fall back to the newest visible one.
+    const stillVisible = visibleVersions.some((version) => version.id === selectedVersion);
+    if (!stillVisible) {
+      selectedVersion = visibleVersions[0]?.id ?? "";
+    }
+  });
+
+  $effect(() => {
     // Sensible port defaults per software family, until the user edits it.
     if (!portTouched) {
       port = isProxy ? DEFAULT_PROXY_PORT : DEFAULT_GAME_PORT;

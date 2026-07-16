@@ -45,6 +45,8 @@ pub fn run() {
             commands::server_statuses,
             commands::server_players,
             commands::get_player_roster,
+            commands::get_player_detail,
+            commands::get_server_address,
             commands::detect_java,
             commands::kill_all_java,
             commands::get_settings,
