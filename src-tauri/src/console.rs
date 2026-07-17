@@ -42,7 +42,10 @@ pub enum ConsoleSignal {
     /// "Kicked <name>: <reason>" — logged when a player is kicked.
     PlayerKicked(String),
     /// `<Name> message` — a chat message.
-    ChatMessage { player: String, message: String },
+    ChatMessage {
+        player: String,
+        message: String,
+    },
 }
 
 /// Parses one raw output line into its display form and any state-change
@@ -503,9 +506,28 @@ mod tests {
     }
 
     #[test]
-    fn ignores_chat_messages_that_mimic_events() {
+    fn chat_that_mimics_events_is_chat_not_a_join() {
+        // A chat line must never be misread as a join/leave; it's chat.
         let chat_line = "[12:00:00] [Server thread/INFO]: <Alex> somebody joined the game";
-        assert_eq!(parse_signal(chat_line), None);
+        assert_eq!(
+            parse_signal(chat_line),
+            Some(ConsoleSignal::ChatMessage {
+                player: "Alex".to_string(),
+                message: "somebody joined the game".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn captures_plain_chat() {
+        let chat_line = "[12:00:00] [Server thread/INFO]: <Alex> hello world";
+        assert_eq!(
+            parse_signal(chat_line),
+            Some(ConsoleSignal::ChatMessage {
+                player: "Alex".to_string(),
+                message: "hello world".to_string(),
+            })
+        );
     }
 
     #[test]
@@ -535,8 +557,15 @@ mod tests {
             Some(ConsoleSignal::PlayerKicked("Alex".to_string()))
         );
 
+        // A chat line that mentions "Kicked" is chat, not a real kick.
         let chat = "[12:00:00] [Server thread/INFO]: <Bob> Kicked Alex: just kidding";
-        assert_eq!(parse_signal(chat), None);
+        assert_eq!(
+            parse_signal(chat),
+            Some(ConsoleSignal::ChatMessage {
+                player: "Bob".to_string(),
+                message: "Kicked Alex: just kidding".to_string(),
+            })
+        );
     }
 
     #[test]

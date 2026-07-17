@@ -136,6 +136,13 @@ export interface ServerAddress {
   port: string;
 }
 
+export interface DirEntry {
+  name: string;
+  relPath: string;
+  isDir: boolean;
+  sizeBytes: number;
+}
+
 export interface UpdateServerRequest {
   name: string;
   memoryMb: number;
@@ -183,6 +190,14 @@ export const api = {
     invoke<void>("set_server_icon", { serverId, sourcePath }),
   getServerIcon: (serverId: string) => invoke<string | null>("get_server_icon", { serverId }),
   removeServerIcon: (serverId: string) => invoke<void>("remove_server_icon", { serverId }),
+  listServerFiles: (serverId: string, relPath: string) =>
+    invoke<DirEntry[]>("list_server_files", { serverId, relPath }),
+  readServerFile: (serverId: string, relPath: string) =>
+    invoke<string>("read_server_file", { serverId, relPath }),
+  writeServerFile: (serverId: string, relPath: string, contents: string) =>
+    invoke<void>("write_server_file", { serverId, relPath, contents }),
+  deleteServerFile: (serverId: string, relPath: string) =>
+    invoke<void>("delete_server_file", { serverId, relPath }),
   getServerProperties: (serverId: string) =>
     invoke<Property[]>("get_server_properties", { serverId }),
   saveServerProperties: (serverId: string, updates: Property[]) =>

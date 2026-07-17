@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { api, resolveBackupsDir, type BackupInfo, type ServerConfig } from "../../api";
+  import { onBackupCreated } from "../../events";
   import { serversStore } from "../../stores/servers.svelte";
   import { toastsStore } from "../../stores/toasts.svelte";
   import { formatBytes, formatDateTime } from "../../format";
@@ -21,6 +23,19 @@
 
   $effect(() => {
     loadBackups(server.id);
+  });
+
+  onMount(() => {
+    // Refresh when a backup finishes elsewhere (e.g. right-click "Back up
+    // now" while this tab was already open, or a scheduled backup).
+    const unlisten = onBackupCreated((serverId) => {
+      if (serverId === server.id) {
+        loadBackups(server.id);
+      }
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
   });
 
   async function loadBackups(serverId: string) {

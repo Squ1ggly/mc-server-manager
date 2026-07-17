@@ -69,7 +69,11 @@ pub async fn list_versions(client: &reqwest::Client, loader: Loader) -> AppResul
     let versions = ids
         .into_iter()
         .map(|id| {
-            let kind = if id.contains('-') { "snapshot" } else { "release" };
+            let kind = if id.contains('-') {
+                "snapshot"
+            } else {
+                "release"
+            };
             McVersion {
                 id,
                 kind: kind.to_string(),

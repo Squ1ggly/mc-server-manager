@@ -33,6 +33,11 @@ cross-platform alternative to tools like MC Server Soft.
   Bedrock, Velocity, and BungeeCord
 - [x] Port selection, per-server Java/JVM args/start command, server icons,
   and an MOTD editor with live preview
+- [x] Player pages (playtime, chat history, moderation), a scoped file
+  browser/editor, a copyable LAN address, a right-click context menu, and
+  in-app docs
+- [x] Settings stored as human-readable YAML (per server, and a global file
+  beside the app) — nothing in the registry
 
 ## 📦 Installing
 

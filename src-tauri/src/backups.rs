@@ -155,7 +155,10 @@ fn add_zip_entry<W: Write + Seek>(
 
     // The world lock is held (and range-locked on Windows) while the server
     // runs — it's meaningless in a backup anyway.
-    if entry_path.file_name().is_some_and(|name| name == "session.lock") {
+    if entry_path
+        .file_name()
+        .is_some_and(|name| name == "session.lock")
+    {
         return Ok(());
     }
 

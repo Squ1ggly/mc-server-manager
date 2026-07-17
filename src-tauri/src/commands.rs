@@ -10,6 +10,7 @@ use serde::Deserialize;
 
 use crate::backups::{self, BackupInfo};
 use crate::error::{AppError, AppResult};
+use crate::files;
 use crate::installers::{self, vanilla};
 use crate::java::{self, JavaInstall};
 use crate::process;
@@ -497,6 +498,51 @@ pub async fn get_player_detail(
         .detail(&server_id, &player_name, &online_players, &banned_names)
         .await;
     Ok(detail)
+}
+
+#[tauri::command]
+pub async fn list_server_files(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    rel_path: String,
+) -> AppResult<Vec<files::DirEntry>> {
+    let config = service::find_config(&app, &server_id).await?;
+    files::list_dir(&state.server_dir(&config), &rel_path)
+}
+
+#[tauri::command]
+pub async fn read_server_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    rel_path: String,
+) -> AppResult<String> {
+    let config = service::find_config(&app, &server_id).await?;
+    files::read_text(&state.server_dir(&config), &rel_path)
+}
+
+#[tauri::command]
+pub async fn write_server_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    rel_path: String,
+    contents: String,
+) -> AppResult<()> {
+    let config = service::find_config(&app, &server_id).await?;
+    files::write_text(&state.server_dir(&config), &rel_path, &contents)
+}
+
+#[tauri::command]
+pub async fn delete_server_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    rel_path: String,
+) -> AppResult<()> {
+    let config = service::find_config(&app, &server_id).await?;
+    files::delete_entry(&state.server_dir(&config), &rel_path)
 }
 
 #[tauri::command]

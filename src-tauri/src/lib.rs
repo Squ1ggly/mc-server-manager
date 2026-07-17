@@ -3,6 +3,7 @@ mod commands;
 mod console;
 mod error;
 mod events;
+mod files;
 mod installers;
 mod java;
 mod platform;
@@ -58,6 +59,10 @@ pub fn run() {
             commands::remove_server_icon,
             commands::get_server_properties,
             commands::save_server_properties,
+            commands::list_server_files,
+            commands::read_server_file,
+            commands::write_server_file,
+            commands::delete_server_file,
             commands::create_backup,
             commands::list_backups,
             commands::restore_backup,

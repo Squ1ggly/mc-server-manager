@@ -1,9 +1,16 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { getVersion } from "@tauri-apps/api/app";
   import { api, type AppSettings, type JavaInstall } from "../api";
   import { toastsStore } from "../stores/toasts.svelte";
   import Button from "../components/Button.svelte";
+
+  let version = $state("");
+  getVersion()
+    .then((v) => (version = `v${v}`))
+    .catch(() => (version = ""));
 
   let settings = $state<AppSettings | null>(null);
   let javaInstalls = $state<JavaInstall[]>([]);
@@ -137,6 +144,29 @@
       another process. Your Minecraft game and launcher are not touched.
     </p>
   </div>
+
+  <div class="card">
+    <h3>📜 About & terms</h3>
+    <p class="hint">
+      Blockparty {version} — a free, open-source Minecraft server manager. It contains
+      no Mojang game assets and is not affiliated with, endorsed by, or associated with
+      Mojang or Microsoft.
+    </p>
+    <p class="hint">
+      Running a Minecraft server means you agree to the
+      <button class="link" onclick={() => openUrl("https://aka.ms/MinecraftEULA")}>
+        Minecraft EULA
+      </button>. The Java runtime is Eclipse Temurin (GPLv2+CE) and the pixel font is
+      Monocraft (SIL OFL 1.1). The software is provided “as is”, without warranty of any
+      kind; you are responsible for your servers, worlds, and any data they hold. Back
+      up anything you can't afford to lose.
+    </p>
+    <p class="hint">
+      <button class="link" onclick={() => openUrl("https://github.com/Squ1ggly/mc-server-manager")}>
+        Source &amp; issues on GitHub
+      </button>
+    </p>
+  </div>
 </section>
 
 <style>
@@ -225,5 +255,20 @@
   .confirm-row {
     display: flex;
     gap: 0.5rem;
+  }
+
+  .link {
+    border: none;
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    color: var(--accent-strong);
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .link:hover {
+    color: var(--accent);
   }
 </style>

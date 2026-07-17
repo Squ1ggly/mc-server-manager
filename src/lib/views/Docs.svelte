@@ -94,13 +94,57 @@
       paragraphs: [
         [
           {
-            text: "The Players tab manages anyone by name (whitelist, pardon, ban — works offline) and shows everyone online with one-click Op, Kick, and Ban.",
+            text: "The Players tab manages anyone by name (whitelist, pardon, ban — works offline) and shows everyone online with one-click Op, Kick, and Ban. Bedrock servers use the allowlist automatically, and gamertags with spaces are handled for you.",
           },
         ],
         [
           {
-            text: "Player history at the bottom remembers everyone who ever joined: playtime, join and kick counts, and live ban status straight from the server's banned-players.json.",
+            text: "Player history remembers everyone who ever joined: playtime, join and kick counts, and live ban status from the server's ban list. Click any player — online or in history — to open their page: total playtime, message count, first/last seen, everything they've said in chat, and Ban/Pardon/Op/Kick buttons.",
           },
+        ],
+      ],
+    },
+    {
+      id: "console",
+      emoji: "📜",
+      title: "Console & commands",
+      paragraphs: [
+        [
+          {
+            text: "The Console streams live output with Minecraft and ANSI colors, word wrap, and a 5000-line buffer. Type any command and press Send, or hit the ⚡ button for quick admin commands (list, save, time, weather, broadcast, gamemode, and more).",
+          },
+        ],
+      ],
+    },
+    {
+      id: "files",
+      emoji: "📁",
+      title: "Files & configs",
+      paragraphs: [
+        [
+          {
+            text: "The Files tab is a browser scoped to the server's own folder — navigate the tree, open any text file (server.properties, ops.json, plugin configs, logs) in the built-in editor, save, or delete. It can't reach outside the server directory.",
+          },
+        ],
+        [
+          {
+            text: "Prefer visual controls? The Settings tab has a friendly server.properties editor, a server-icon picker (any image, auto-resized to 64×64), and an MOTD editor with the full color/format palette and a live preview.",
+          },
+        ],
+      ],
+    },
+    {
+      id: "dashboard",
+      emoji: "🏡",
+      title: "The dashboard",
+      paragraphs: [
+        [
+          {
+            text: "Each server's Dashboard shows live CPU, memory, and uptime (with sparklines), who's online, the version, and a one-click-copy LAN address (your machine's IP and the server's port) to share with friends on your network.",
+          },
+        ],
+        [
+          { text: "The top bar spans every page: create a server, or start / stop / back up all of them at once. Right-click a server (or empty space) for a context menu of quick actions." },
         ],
       ],
     },

@@ -620,7 +620,10 @@ async fn ingest_line(
         }
         Some(ConsoleSignal::ChatMessage { player, message }) => {
             let state = app.state::<crate::state::AppState>();
-            state.rosters.record_chat(server_id, &player, &message).await;
+            state
+                .rosters
+                .record_chat(server_id, &player, &message)
+                .await;
         }
         None => {}
     }

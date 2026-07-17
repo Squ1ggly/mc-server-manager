@@ -4,6 +4,7 @@
   import type { ServerConfig } from "../api";
   import ServerCard from "../components/ServerCard.svelte";
   import Button from "../components/Button.svelte";
+  import GrassBlock from "../components/GrassBlock.svelte";
 
   interface Props {
     onopen: (serverId: string) => void;
@@ -15,18 +16,14 @@
 </script>
 
 <section class="dashboard">
-  <div class="head">
-    <h1>Your servers</h1>
-    <Button onclick={onnew}>＋ New server</Button>
-  </div>
-
   {#if serversStore.servers.length === 0}
     <div class="empty" in:fade={{ duration: 120 }}>
-      <span class="egg">🥚</span>
-      <p>No servers yet — let's hatch your first one!</p>
-      <Button onclick={onnew}>Create a server</Button>
+      <GrassBlock size={72} />
+      <p>No servers yet — build your first one!</p>
+      <Button onclick={onnew}>＋ New server</Button>
     </div>
   {:else}
+    <h1>Your servers</h1>
     <div class="grid">
       {#each serversStore.servers as server (server.id)}
         <ServerCard
@@ -46,16 +43,9 @@
     padding: 1.5rem 2rem 3rem;
   }
 
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1.25rem;
-  }
-
   h1 {
     font-size: 1.5rem;
-    margin: 0;
+    margin: 0 0 1.25rem;
   }
 
   /* auto-fit + a 1fr max counts columns from the 320px minimum (a definite
@@ -74,23 +64,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.9rem;
     color: var(--muted);
-  }
-
-  .egg {
-    font-size: 3.5rem;
-    display: inline-block;
-    animation: bounce 2.2s ease-in-out infinite;
-  }
-
-  @keyframes bounce {
-    0%,
-    100% {
-      transform: translateY(0) rotate(-4deg);
-    }
-    50% {
-      transform: translateY(-10px) rotate(4deg);
-    }
   }
 </style>

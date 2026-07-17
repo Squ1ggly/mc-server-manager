@@ -12,6 +12,7 @@
   import SettingsTab from "./tabs/SettingsTab.svelte";
   import BackupsTab from "./tabs/BackupsTab.svelte";
   import SchedulerTab from "./tabs/SchedulerTab.svelte";
+  import FilesTab from "./tabs/FilesTab.svelte";
 
   interface Props {
     server: ServerConfig;
@@ -24,6 +25,7 @@
     { id: "dashboard", label: "Dashboard", emoji: "🏡" },
     { id: "console", label: "Console", emoji: "📜" },
     { id: "players", label: "Players", emoji: "🧑‍🤝‍🧑" },
+    { id: "files", label: "Files", emoji: "📁" },
     { id: "settings", label: "Settings", emoji: "🛠️" },
     { id: "backups", label: "Backups", emoji: "🎁" },
     { id: "scheduler", label: "Scheduler", emoji: "⏰" },
@@ -131,6 +133,8 @@
       <ConsoleTab {server} />
     {:else if activeTab === "players"}
       <PlayersTab {server} />
+    {:else if activeTab === "files"}
+      <FilesTab {server} />
     {:else if activeTab === "settings"}
       <SettingsTab {server} />
     {:else if activeTab === "backups"}

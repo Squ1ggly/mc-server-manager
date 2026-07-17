@@ -108,8 +108,7 @@ fn migrate_from_json(data_dir: &Path) -> Option<GlobalSettings> {
         serde_json::from_str(&std::fs::read_to_string(data_dir.join("settings.json")).ok()?)
             .ok()?;
     let old_registry: OldRegistry =
-        serde_json::from_str(&std::fs::read_to_string(data_dir.join("servers.json")).ok()?)
-            .ok()?;
+        serde_json::from_str(&std::fs::read_to_string(data_dir.join("servers.json")).ok()?).ok()?;
 
     let mut server_dirs = Vec::new();
     for mut config in old_registry.servers {

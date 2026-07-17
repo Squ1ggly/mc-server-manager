@@ -314,7 +314,8 @@
 
   <div class="content">
     <header class="bulkbar">
-      <span class="bulk-title">⚡ All servers</span>
+      <Button onclick={() => (wizardOpen = true)}>＋ New server</Button>
+      <span class="bulk-divider"></span>
       <Button variant="soft" disabled={bulkBusy} onclick={startAll}>▶ Start all</Button>
       <Button variant="danger" disabled={bulkBusy} onclick={stopAll}>⏹ Stop all</Button>
       <Button variant="ghost" disabled={bulkBusy} onclick={backupAll}>🎁 Backup all</Button>
@@ -467,11 +468,11 @@
     flex-shrink: 0;
   }
 
-  .bulk-title {
-    font-family: var(--font-pixel);
-    font-size: 0.9rem;
-    font-weight: 700;
-    margin-right: 0.5rem;
+  .bulk-divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border);
+    margin: 0.15rem 0.35rem;
   }
 
   .bulk-status {

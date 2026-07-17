@@ -294,6 +294,24 @@
     font-weight: 700;
   }
 
+  /* Clickable player names open the detail page. */
+  .link {
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: 700;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .link:hover {
+    color: var(--accent-strong);
+    text-decoration: underline;
+  }
+
   .player-actions {
     display: flex;
     gap: 0.35rem;
@@ -369,13 +387,34 @@
   .history-list li {
     display: flex;
     align-items: center;
-    gap: 0.7rem;
-    padding: 0.5rem 0;
+    gap: 0.5rem;
+    padding: 0.35rem 0;
     border-bottom: 1px solid var(--border);
   }
 
   .history-list li:last-child {
     border-bottom: none;
+  }
+
+  /* The whole row (except the pardon button) opens the player page. */
+  .entry-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
+    padding: 0.15rem 0.3rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-out);
+  }
+
+  .entry-main:hover {
+    background: var(--surface-2);
   }
 
   .history-list img {
@@ -386,6 +425,7 @@
 
   .entry-name {
     font-weight: 700;
+    color: var(--text);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -417,12 +457,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .entry-seen {
-    font-size: 0.78rem;
-    color: var(--muted);
-    white-space: nowrap;
   }
 
   .manual {
