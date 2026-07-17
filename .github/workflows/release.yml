@@ -1,7 +1,8 @@
 name: Release
 
 # Builds installers for Windows, macOS, and Linux whenever a version tag
-# (v1.2.3) is pushed, and attaches them to a draft GitHub release.
+# (v1.2.3) is pushed, and publishes them as a full GitHub release. Because it's
+# published and not a prerelease, GitHub marks it as the "Latest" release.
 on:
   push:
     tags:
@@ -73,5 +74,8 @@ jobs:
 
             **Linux** — install the `.deb`/`.rpm`, or `chmod +x` the `.AppImage`
             and run it.
-          releaseDraft: true
+          # Publish straight away (not a draft) and not a prerelease, so GitHub
+          # tags it "Latest".
+          releaseDraft: false
+          prerelease: false
           args: ${{ matrix.args }}
