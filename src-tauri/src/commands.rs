@@ -450,24 +450,91 @@ pub async fn get_server_address(
 
     let address = ServerAddress {
         lan_ip: local_lan_ip(),
-        port: configured_port(&server_dir),
+        port: configured_port(&server_dir, config.loader),
     };
     Ok(address)
 }
 
-/// The server's configured port from `server.properties`, or the vanilla
-/// default when the file doesn't exist yet.
-fn configured_port(server_dir: &std::path::Path) -> String {
+/// The port players actually connect on. Proxies don't have a
+/// `server.properties` — they keep their listen port in their own config — so
+/// each family is read from the right file, falling back to its default.
+fn configured_port(server_dir: &std::path::Path, loader: Loader) -> String {
+    let from_config = match loader {
+        Loader::Velocity => velocity_port(server_dir),
+        Loader::BungeeCord => bungee_port(server_dir),
+        _ => properties_port(server_dir),
+    };
+    from_config.unwrap_or_else(|| default_port(loader).to_string())
+}
+
+/// Vanilla and every Java server default to 25565; the proxies to 25577.
+fn default_port(loader: Loader) -> &'static str {
+    if loader.is_proxy() {
+        "25577"
+    } else {
+        "25565"
+    }
+}
+
+fn is_port(text: &str) -> bool {
+    !text.is_empty() && text.parse::<u16>().is_ok()
+}
+
+fn properties_port(server_dir: &std::path::Path) -> Option<String> {
     properties::read(server_dir)
-        .ok()
-        .and_then(|props| {
-            props
-                .into_iter()
-                .find(|property| property.key == "server-port")
-        })
+        .ok()?
+        .into_iter()
+        .find(|property| property.key == "server-port")
         .map(|property| property.value)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "25565".to_string())
+        .filter(|value| is_port(value))
+}
+
+/// Velocity's `velocity.toml` holds `bind = "0.0.0.0:25577"`.
+fn velocity_port(server_dir: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(server_dir.join("velocity.toml")).ok()?;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "bind" {
+            continue;
+        }
+        let port = value.trim().trim_matches('"').rsplit(':').next()?;
+        if is_port(port) {
+            return Some(port.to_string());
+        }
+    }
+    None
+}
+
+/// BungeeCord's `config.yml` lists `host: 0.0.0.0:25577` under `listeners`.
+fn bungee_port(server_dir: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(server_dir.join("config.yml")).ok()?;
+
+    for line in text.lines() {
+        let trimmed = line.trim().trim_start_matches("- ").trim();
+        let Some((key, value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        if key.trim() != "host" {
+            continue;
+        }
+        let port = value
+            .trim()
+            .trim_matches('\'')
+            .trim_matches('"')
+            .rsplit(':')
+            .next()?;
+        if is_port(port) {
+            return Some(port.to_string());
+        }
+    }
+    None
 }
 
 /// This machine's LAN IP, found by asking the OS which local address it
@@ -521,6 +588,36 @@ impl ForwardResult {
     }
 }
 
+/// Builds the "it's forwarded" outcome for a mapping on `wan_ip`, including the
+/// CGNAT check — shared by opening a mapping and by finding an existing one.
+async fn forward_success(wan_ip: std::net::IpAddr, port: u16) -> ForwardResult {
+    let public = portforward::public_ip().await;
+    // A WAN address that isn't what the internet sees means another NAT sits
+    // in front of the router.
+    let cgnat = portforward::is_behind_carrier_nat(wan_ip)
+        || public
+            .as_deref()
+            .map(|ip| ip != wan_ip.to_string())
+            .unwrap_or(false);
+    let host = public.unwrap_or_else(|| wan_ip.to_string());
+
+    let message = if cgnat {
+        "Your router forwarded the port, but your ISP uses shared (CGNAT) \
+         addressing, so friends likely still can't connect. See the \
+         \"Playing over the internet\" docs for options."
+            .to_string()
+    } else {
+        "Port forwarded! Share the address below with your friends.".to_string()
+    };
+
+    ForwardResult {
+        success: true,
+        public_address: Some(format!("{host}:{port}")),
+        cgnat,
+        message,
+    }
+}
+
 /// Opens (UPnP-forwards) a server's port so players can connect over the
 /// internet. Expected failures — no UPnP, or CGNAT — come back as a descriptive
 /// [`ForwardResult`] rather than an error, so the UI can guide the user.
@@ -532,7 +629,7 @@ pub async fn open_port_forward(
 ) -> AppResult<ForwardResult> {
     let config = service::find_config(&app, &server_id).await?;
     let server_dir = state.server_dir(&config);
-    let port_text = configured_port(&server_dir);
+    let port_text = configured_port(&server_dir, config.loader);
 
     let port: u16 = match port_text.parse() {
         Ok(port) => port,
@@ -553,38 +650,45 @@ pub async fn open_port_forward(
     };
 
     match portforward::open(forward_protocol(config.loader), port, lan_ip).await {
-        Ok(wan_ip) => {
-            let public = portforward::public_ip().await;
-            let cgnat = portforward::is_behind_carrier_nat(wan_ip)
-                || public
-                    .as_deref()
-                    .map(|ip| ip != wan_ip.to_string())
-                    .unwrap_or(false);
-            let host = public.unwrap_or_else(|| wan_ip.to_string());
-            let message = if cgnat {
-                "Your router forwarded the port, but your ISP uses shared (CGNAT) \
-                 addressing, so friends likely still can't connect. See the \
-                 \"Playing over the internet\" docs for options."
-                    .to_string()
-            } else {
-                "Port forwarded! Share the address below with your friends.".to_string()
-            };
-            Ok(ForwardResult {
-                success: true,
-                public_address: Some(format!("{host}:{port}")),
-                cgnat,
-                message,
-            })
-        }
+        Ok(wan_ip) => Ok(forward_success(wan_ip, port).await),
         Err(portforward::PortForwardError::NoGateway) => Ok(ForwardResult::failure(
-            "No UPnP router found. UPnP may be turned off on your router — turn it on \
-             and try again, or forward the port manually. See the \"Playing over the \
-             internet\" docs.",
+            "No UPnP router found. Check that UPnP is enabled on your router, and that \
+             this PC isn't on a VPN or a guest network — either one hides the router \
+             from Blockparty. Otherwise you can forward the port manually; see the \
+             \"Playing over the internet\" docs.",
         )),
         Err(error) => Ok(ForwardResult::failure(format!(
             "Couldn't set up forwarding automatically ({error}). You can forward the \
              port manually — see the \"Playing over the internet\" docs."
         ))),
+    }
+}
+
+/// Whether this server's port is *already* forwarded on the router.
+///
+/// Router mappings outlive the app, so on startup the UI asks this rather than
+/// assuming nothing is forwarded. Returns null when it isn't forwarded, or the
+/// router doesn't speak UPnP — neither is an error worth bothering the user
+/// with here.
+#[tauri::command]
+pub async fn port_forward_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+) -> AppResult<Option<ForwardResult>> {
+    let config = service::find_config(&app, &server_id).await?;
+    let server_dir = state.server_dir(&config);
+
+    let Ok(port) = configured_port(&server_dir, config.loader).parse::<u16>() else {
+        return Ok(None);
+    };
+    let Ok(std::net::IpAddr::V4(lan_ip)) = local_lan_ip().parse::<std::net::IpAddr>() else {
+        return Ok(None);
+    };
+
+    match portforward::status(forward_protocol(config.loader), port, lan_ip).await {
+        Ok(Some(wan_ip)) => Ok(Some(forward_success(wan_ip, port).await)),
+        _ => Ok(None),
     }
 }
 
@@ -598,8 +702,11 @@ pub async fn close_port_forward(
 ) -> AppResult<()> {
     let config = service::find_config(&app, &server_id).await?;
     let server_dir = state.server_dir(&config);
-    if let Ok(port) = configured_port(&server_dir).parse::<u16>() {
-        let _ = portforward::close(forward_protocol(config.loader), port).await;
+    let port = configured_port(&server_dir, config.loader).parse::<u16>();
+    let lan_ip = local_lan_ip().parse::<std::net::IpAddr>();
+
+    if let (Ok(port), Ok(std::net::IpAddr::V4(lan_ip))) = (port, lan_ip) {
+        let _ = portforward::close(forward_protocol(config.loader), port, lan_ip).await;
     }
     Ok(())
 }
@@ -923,5 +1030,58 @@ pub async fn preview_next_run(cron: String) -> AppResult<Option<i64>> {
 fn remove_dir_best_effort(dir: &std::path::Path) {
     if let Err(error) = std::fs::remove_dir_all(dir) {
         eprintln!("failed to clean up {}: {error}", dir.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Writes `contents` to `name` in a fresh temp dir and returns the dir.
+    fn dir_with(name: &str, contents: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("blockparty-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        std::fs::write(dir.join(name), contents).expect("write config");
+        dir
+    }
+
+    #[test]
+    fn reads_velocity_port_from_its_toml() {
+        let dir = dir_with(
+            "velocity.toml",
+            "# What port should the proxy be bound to?\nbind = \"0.0.0.0:25599\"\nmotd = \"hi\"\n",
+        );
+        assert_eq!(configured_port(&dir, Loader::Velocity), "25599");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reads_bungee_port_from_its_yaml() {
+        let dir = dir_with(
+            "config.yml",
+            "listeners:\n- query_port: 25577\n  host: 0.0.0.0:25588\n  motd: 'hi'\n",
+        );
+        assert_eq!(configured_port(&dir, Loader::BungeeCord), "25588");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn proxies_fall_back_to_the_proxy_default_not_25565() {
+        // An empty dir: a proxy must not report the vanilla port.
+        let dir = dir_with("unrelated.txt", "");
+        assert_eq!(configured_port(&dir, Loader::Velocity), "25577");
+        assert_eq!(configured_port(&dir, Loader::BungeeCord), "25577");
+        assert_eq!(configured_port(&dir, Loader::Vanilla), "25565");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn commented_out_bind_lines_are_ignored() {
+        let dir = dir_with(
+            "velocity.toml",
+            "# bind = \"0.0.0.0:11111\"\nbind = \"0.0.0.0:25577\"\n",
+        );
+        assert_eq!(configured_port(&dir, Loader::Velocity), "25577");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

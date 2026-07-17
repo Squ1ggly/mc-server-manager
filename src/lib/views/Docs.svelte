@@ -201,7 +201,12 @@
         ],
         [
           {
-            text: "The easy way: on a server's Dashboard, click \"Open to internet\". Blockparty asks your router to forward the port for you over UPnP and, when it works, shows a public address to share. Click \"Close\" to remove it again when you're done — an open port stays reachable by anyone until you do.",
+            text: "The easy way: on a server's Dashboard, click \"Open to internet\". Blockparty asks your router to forward the port for you over UPnP and, when it works, shows a public address to share. Click \"Close\" to remove it again when you're done — an open port stays reachable by anyone until you do. Mappings outlive the app, so a server left open still shows as forwarded next time you launch Blockparty.",
+          },
+        ],
+        [
+          {
+            text: "Running a proxy? Forward the proxy only. Velocity and BungeeCord are the address players connect to (port 25577 by default), and they reach the servers behind them over your own network — those backend servers don't need forwarding, and are safer left closed.",
           },
         ],
         [

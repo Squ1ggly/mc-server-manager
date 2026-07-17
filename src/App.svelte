@@ -12,6 +12,9 @@
   import { api, type ServerConfig } from "./lib/api";
   import Toasts from "./lib/components/Toasts.svelte";
   import ReasonPrompt from "./lib/components/ReasonPrompt.svelte";
+  import ConfirmDialog from "./lib/components/ConfirmDialog.svelte";
+  import { confirmStore } from "./lib/stores/confirm.svelte";
+  import { portForwardStore } from "./lib/stores/portForward.svelte";
   import StatusBlob from "./lib/components/StatusBlob.svelte";
   import GrassBlock from "./lib/components/GrassBlock.svelte";
   import { serversStore } from "./lib/stores/servers.svelte";
@@ -146,6 +149,30 @@
     }
   }
 
+  /** Deleting wipes the server folder, so always confirm first. */
+  async function deleteServerFromMenu(server: ServerConfig) {
+    const confirmed = await confirmStore.ask({
+      title: `Delete "${server.name}"?`,
+      body:
+        "This permanently deletes the server's folder — world, configs, plugins and all — " +
+        "along with its player history and scheduled tasks. This can't be undone.",
+      confirmLabel: "🗑 Delete forever",
+      variant: "danger",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    // Leave the server's page before refreshing, or the view renders a server
+    // that no longer exists.
+    if (route.view === "server" && route.serverId === server.id) {
+      route = { view: "home" };
+    }
+    await runWithToast(() => api.deleteServer(server.id), `Deleted "${server.name}" 🗑️`);
+    portForwardStore.clear(server.id);
+    await serversStore.refresh();
+  }
+
   function serverMenuEntries(server: ServerConfig): MenuEntry[] {
     const status = serversStore.statusOf(server.id);
     const canStart = status === "stopped" || status === "crashed";
@@ -198,6 +225,15 @@
         emoji: "📂",
         disabled: server.dir === "",
         action: () => runWithToast(() => openPath(server.dir)),
+      },
+      "separator",
+      {
+        label: "Delete server",
+        emoji: "🗑",
+        danger: true,
+        // The backend refuses to delete a running server; stop it first.
+        disabled: !canStart,
+        action: () => deleteServerFromMenu(server),
       },
     );
     return entries;
@@ -352,6 +388,7 @@
 <CreateServerWizard open={wizardOpen} onclose={() => (wizardOpen = false)} />
 <ContextMenu />
 <ReasonPrompt />
+<ConfirmDialog />
 <Toasts />
 
 <style>

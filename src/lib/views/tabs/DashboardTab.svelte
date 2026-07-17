@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { api, type ServerAddress, type ServerConfig, type ForwardResult } from "../../api";
+  import { api, type ServerAddress, type ServerConfig } from "../../api";
   import { serversStore } from "../../stores/servers.svelte";
   import { statsStore } from "../../stores/stats.svelte";
   import { toastsStore } from "../../stores/toasts.svelte";
+  import { portForwardStore } from "../../stores/portForward.svelte";
   import { formatBytes, formatDateTime, formatUptime } from "../../format";
   import { STATUS_META } from "../../status";
   import StatTile from "../../components/StatTile.svelte";
@@ -22,48 +23,88 @@
   const players = $derived(serversStore.playersOf(server.id));
   const stats = $derived(statsStore.of(server.id));
   const isLive = $derived(stats.latest !== null);
-  const isProxy = $derived(server.loader === "velocity" || server.loader === "bungeecord");
 
   let address = $state<ServerAddress | null>(null);
+  // Bumped per load so a slow reply for a server we've navigated away from
+  // can't overwrite the one on screen.
+  let addressToken = 0;
 
   $effect(() => {
+    const serverId = server.id;
+    const token = ++addressToken;
+    // Clear first: each server has its own port, so holding the previous
+    // server's address while this one loads would show the wrong one.
+    address = null;
+
     api
-      .getServerAddress(server.id)
-      .then((result) => (address = result))
-      .catch(() => (address = null));
+      .getServerAddress(serverId)
+      .then((result) => {
+        if (token === addressToken) {
+          address = result;
+        }
+      })
+      .catch(() => {
+        if (token === addressToken) {
+          address = null;
+        }
+      });
   });
 
   const lanAddress = $derived(address ? `${address.lanIp}:${address.port}` : "—");
 
-  // Port forwarding (UPnP). `forward` holds the last attempt's outcome.
-  let forward = $state<ForwardResult | null>(null);
-  let forwardBusy = $state(false);
+  // Port forwarding (UPnP) — kept per server in a store, since this component
+  // is reused as you switch servers.
+  const forward = $derived(portForwardStore.resultOf(server.id));
+  const forwardBusy = $derived(portForwardStore.isBusy(server.id));
   const forwarded = $derived(forward?.success ?? false);
 
+  $effect(() => {
+    // Mappings outlive the app, so ask the router whether this server is
+    // already forwarded rather than assuming it isn't. Once per server per
+    // session; failures just leave it showing "not forwarded".
+    const serverId = server.id;
+    if (!portForwardStore.claimStatusCheck(serverId)) {
+      return;
+    }
+    api
+      .portForwardStatus(serverId)
+      .then((result) => {
+        if (result) {
+          portForwardStore.record(serverId, result);
+        }
+      })
+      .catch(() => {});
+  });
+
   async function openToInternet() {
-    forwardBusy = true;
+    // Pin the id: navigating away mid-request must not file the result under
+    // whichever server is on screen when it returns.
+    const serverId = server.id;
+    portForwardStore.setBusy(serverId, true);
     try {
-      forward = await api.openPortForward(server.id);
-      if (forward.success && !forward.cgnat) {
+      const result = await api.openPortForward(serverId);
+      portForwardStore.record(serverId, result);
+      if (result.success && !result.cgnat) {
         toastsStore.success("Port forwarded — friends can join 🌍");
       }
     } catch (error) {
       toastsStore.error(String(error));
     } finally {
-      forwardBusy = false;
+      portForwardStore.setBusy(serverId, false);
     }
   }
 
   async function closeToInternet() {
-    forwardBusy = true;
+    const serverId = server.id;
+    portForwardStore.setBusy(serverId, true);
     try {
-      await api.closePortForward(server.id);
-      forward = null;
+      await api.closePortForward(serverId);
+      portForwardStore.clear(serverId);
       toastsStore.show("Closed to the internet 🔒");
     } catch (error) {
       toastsStore.error(String(error));
     } finally {
-      forwardBusy = false;
+      portForwardStore.setBusy(serverId, false);
     }
   }
 
@@ -87,54 +128,54 @@
 </script>
 
 <div class="dash">
-  {#if !isProxy}
-    <button class="address" onclick={() => copy(lanAddress)} title="Click to copy">
-      <span class="address-label">🔗 LAN address — click to copy</span>
-      <span class="address-value">{lanAddress}</span>
-    </button>
+  <!-- Proxies get this too: the proxy is the address players actually connect
+       to, so it's the one that most needs forwarding. -->
+  <button class="address" onclick={() => copy(lanAddress)} title="Click to copy">
+    <span class="address-label">🔗 LAN address — click to copy</span>
+    <span class="address-value">{lanAddress}</span>
+  </button>
 
-    <div
-      class="forward"
-      class:ok={forwarded && !forward?.cgnat}
-      class:warn={forwarded && forward?.cgnat}
-      class:err={forward !== null && !forward.success}
-    >
-      <div class="forward-head">
-        <div class="forward-title">
-          <span class="forward-label">🌍 Play over the internet</span>
-          {#if forwarded}<span class="forward-tag">forwarded</span>{/if}
-        </div>
-        {#if forwarded}
-          <Button variant="soft" disabled={forwardBusy} onclick={closeToInternet}>
-            {forwardBusy ? "Working…" : "Close"}
-          </Button>
-        {:else}
-          <Button disabled={forwardBusy} onclick={openToInternet}>
-            {forwardBusy ? "Opening…" : "Open to internet"}
-          </Button>
-        {/if}
+  <div
+    class="forward"
+    class:ok={forwarded && !forward?.cgnat}
+    class:warn={forwarded && forward?.cgnat}
+    class:err={forward !== null && !forward.success}
+  >
+    <div class="forward-head">
+      <div class="forward-title">
+        <span class="forward-label">🌍 Play over the internet</span>
+        {#if forwarded}<span class="forward-tag">forwarded</span>{/if}
       </div>
-
-      {#if forward === null}
-        <p class="forward-hint">
-          Ask your router to forward this server's port automatically (UPnP) so friends can
-          join from anywhere. If it can't, the Docs explain how to forward it manually.
-        </p>
+      {#if forwarded}
+        <Button variant="soft" disabled={forwardBusy} onclick={closeToInternet}>
+          {forwardBusy ? "Working…" : "Close"}
+        </Button>
       {:else}
-        <p class="forward-message">{forward.message}</p>
-        {#if forward.publicAddress}
-          <button
-            class="pub-address"
-            onclick={() => copy(forward!.publicAddress!)}
-            title="Click to copy"
-          >
-            <span class="address-label">🔗 Public address — click to copy</span>
-            <span class="address-value">{forward.publicAddress}</span>
-          </button>
-        {/if}
+        <Button disabled={forwardBusy} onclick={openToInternet}>
+          {forwardBusy ? "Opening…" : "Open to internet"}
+        </Button>
       {/if}
     </div>
-  {/if}
+
+    {#if forward === null}
+      <p class="forward-hint">
+        Ask your router to forward this server's port automatically (UPnP) so friends can
+        join from anywhere. If it can't, the Docs explain how to forward it manually.
+      </p>
+    {:else}
+      <p class="forward-message">{forward.message}</p>
+      {#if forward.publicAddress}
+        <button
+          class="pub-address"
+          onclick={() => copy(forward!.publicAddress!)}
+          title="Click to copy"
+        >
+          <span class="address-label">🔗 Public address — click to copy</span>
+          <span class="address-value">{forward.publicAddress}</span>
+        </button>
+      {/if}
+    {/if}
+  </div>
 
   <div class="grid">
     <StatTile label="Status" value="{statusMeta.label} {statusMeta.emoji}" />

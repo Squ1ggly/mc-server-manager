@@ -53,6 +53,7 @@ pub fn run() {
             commands::get_server_address,
             commands::open_port_forward,
             commands::close_port_forward,
+            commands::port_forward_status,
             commands::detect_java,
             commands::kill_all_java,
             commands::get_settings,

@@ -7,8 +7,10 @@
 //! so the UI can explain it instead of silently "succeeding".
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::time::Duration;
 
-use igd_next::aio::tokio::search_gateway;
+use igd_next::aio::tokio::{search_gateway, Tokio};
+use igd_next::aio::Gateway;
 use igd_next::{PortMappingProtocol, SearchOptions};
 
 /// Shown in the router's UPnP mapping table.
@@ -16,6 +18,8 @@ const DESCRIPTION: &str = "Blockparty Minecraft server";
 /// Ask for an indefinite lease; fall back to a week if the router refuses one.
 const INDEFINITE_LEASE: u32 = 0;
 const FALLBACK_LEASE: u32 = 604_800;
+/// How long to wait for a router to answer the SSDP search.
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Which transport the game uses: Java is TCP, Bedrock is UDP.
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +45,69 @@ pub enum PortForwardError {
     Router(String),
 }
 
+/// Finds the router's UPnP gateway, searching from this machine's LAN
+/// interface first.
+///
+/// This matters more than it looks: the default bind address is `0.0.0.0`,
+/// which lets the OS choose which interface the SSDP multicast leaves by.
+/// Machines with virtual adapters — Hyper-V, WSL, VirtualBox, VPNs, which is
+/// most Windows machines — routinely send it out one of those instead of the
+/// real network, so a router that speaks UPnP perfectly well is never found.
+/// Binding to the actual LAN address aims the search at the right network; we
+/// still fall back to the default in case that address can't be bound.
+async fn find_gateway(lan_ip: Ipv4Addr) -> Result<Gateway<Tokio>, PortForwardError> {
+    let from_lan_interface = SearchOptions {
+        bind_addr: SocketAddr::new(IpAddr::V4(lan_ip), 0),
+        timeout: Some(SEARCH_TIMEOUT),
+        ..Default::default()
+    };
+    if let Ok(gateway) = search_gateway(from_lan_interface).await {
+        return Ok(gateway);
+    }
+
+    let any_interface = SearchOptions {
+        timeout: Some(SEARCH_TIMEOUT),
+        ..Default::default()
+    };
+    search_gateway(any_interface)
+        .await
+        .map_err(|_| PortForwardError::NoGateway)
+}
+
+/// Adds the mapping, working around the two ways routers commonly refuse one.
+async fn add_mapping(
+    gateway: &Gateway<Tokio>,
+    proto: PortMappingProtocol,
+    port: u16,
+    local: SocketAddr,
+) -> Result<(), PortForwardError> {
+    // Some routers only accept finite leases, so retry with one if the
+    // indefinite request is rejected.
+    if gateway
+        .add_port(proto, port, local, INDEFINITE_LEASE, DESCRIPTION)
+        .await
+        .is_ok()
+    {
+        return Ok(());
+    }
+    if gateway
+        .add_port(proto, port, local, FALLBACK_LEASE, DESCRIPTION)
+        .await
+        .is_ok()
+    {
+        return Ok(());
+    }
+
+    // A leftover mapping for this port — ours from a previous run, or one the
+    // router kept after a reboot — makes it reject the new one. Clear it and
+    // try once more.
+    let _ = gateway.remove_port(proto, port).await;
+    gateway
+        .add_port(proto, port, local, FALLBACK_LEASE, DESCRIPTION)
+        .await
+        .map_err(|error| PortForwardError::Router(error.to_string()))
+}
+
 /// Asks the router to forward `port` to this machine and returns the router's
 /// WAN (external) IP so the caller can check reachability.
 pub async fn open(
@@ -48,25 +115,10 @@ pub async fn open(
     port: u16,
     lan_ip: Ipv4Addr,
 ) -> Result<IpAddr, PortForwardError> {
-    let gateway = search_gateway(SearchOptions::default())
-        .await
-        .map_err(|_| PortForwardError::NoGateway)?;
-
+    let gateway = find_gateway(lan_ip).await?;
     let local = SocketAddr::new(IpAddr::V4(lan_ip), port);
-    let proto = protocol.as_igd();
 
-    // Some routers only accept finite leases, so retry with one if the
-    // indefinite request is rejected.
-    if gateway
-        .add_port(proto, port, local, INDEFINITE_LEASE, DESCRIPTION)
-        .await
-        .is_err()
-    {
-        gateway
-            .add_port(proto, port, local, FALLBACK_LEASE, DESCRIPTION)
-            .await
-            .map_err(|error| PortForwardError::Router(error.to_string()))?;
-    }
+    add_mapping(&gateway, protocol.as_igd(), port, local).await?;
 
     gateway
         .get_external_ip()
@@ -75,23 +127,67 @@ pub async fn open(
 }
 
 /// Removes a mapping previously added by [`open`]. A missing mapping is fine.
-pub async fn close(protocol: Protocol, port: u16) -> Result<(), PortForwardError> {
-    let gateway = search_gateway(SearchOptions::default())
-        .await
-        .map_err(|_| PortForwardError::NoGateway)?;
+pub async fn close(
+    protocol: Protocol,
+    port: u16,
+    lan_ip: Ipv4Addr,
+) -> Result<(), PortForwardError> {
+    let gateway = find_gateway(lan_ip).await?;
     gateway
         .remove_port(protocol.as_igd(), port)
         .await
         .map_err(|error| PortForwardError::Router(error.to_string()))
 }
 
-/// This machine's real public IP, as seen from the internet — used to tell
+/// How many mapping slots to walk before giving up. Routers hold far fewer
+/// than this; the bound just stops a misbehaving one from looping forever.
+const MAX_MAPPING_SCAN: u32 = 128;
+
+/// Whether this machine already has `port` forwarded to it — i.e. a mapping we
+/// (or a previous run of the app) left on the router. Returns the router's WAN
+/// IP alongside, so the caller can rebuild the shareable address.
+///
+/// Mappings outlive the app, so this is how a restart rediscovers that a
+/// server is still open to the internet instead of claiming it isn't.
+pub async fn status(
+    protocol: Protocol,
+    port: u16,
+    lan_ip: Ipv4Addr,
+) -> Result<Option<IpAddr>, PortForwardError> {
+    let gateway = find_gateway(lan_ip).await?;
+    let wanted = protocol.as_igd();
+    let us = lan_ip.to_string();
+
+    // Routers expose mappings only by index, so walk them until the index runs
+    // out (the documented way to enumerate).
+    for index in 0..MAX_MAPPING_SCAN {
+        let Ok(entry) = gateway.get_generic_port_mapping_entry(index).await else {
+            break;
+        };
+        let is_ours =
+            entry.external_port == port && entry.protocol == wanted && entry.internal_client == us;
+        if is_ours {
+            let wan_ip = gateway
+                .get_external_ip()
+                .await
+                .map_err(|error| PortForwardError::Router(error.to_string()))?;
+            return Ok(Some(wan_ip));
+        }
+    }
+    Ok(None)
+}
+
+/// This machine's real public IPv4, as seen from the internet — used to tell
 /// whether the router's WAN IP is actually reachable (CGNAT check).
+///
+/// Deliberately the IPv4-only endpoint: the dual-stack one answers with an
+/// IPv6 address whenever the machine has IPv6, which never matches the
+/// router's IPv4 WAN address and would make every such setup look like CGNAT.
 pub async fn public_ip() -> Option<String> {
-    let response = reqwest::get("https://api.ipify.org").await.ok()?;
+    let response = reqwest::get("https://api4.ipify.org").await.ok()?;
     let text = response.text().await.ok()?;
     let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed.parse::<IpAddr>().is_err() {
+    if trimmed.parse::<Ipv4Addr>().is_err() {
         return None;
     }
     Some(trimmed.to_string())

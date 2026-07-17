@@ -234,6 +234,9 @@ export const api = {
   openPortForward: (serverId: string) =>
     invoke<ForwardResult>("open_port_forward", { serverId }),
   closePortForward: (serverId: string) => invoke<void>("close_port_forward", { serverId }),
+  /** Null when the port isn't currently forwarded on the router. */
+  portForwardStatus: (serverId: string) =>
+    invoke<ForwardResult | null>("port_forward_status", { serverId }),
   updateServer: (serverId: string, request: UpdateServerRequest) =>
     invoke<ServerConfig>("update_server", { serverId, request }),
   setServerIcon: (serverId: string, sourcePath: string) =>
