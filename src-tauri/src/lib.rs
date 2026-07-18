@@ -58,6 +58,12 @@ pub fn run() {
 
             stats::spawn_sampler(app.handle().clone(), running);
             scheduler::spawn_scheduler(app.handle().clone());
+
+            // Clean up any server processes a previous crash left orphaned.
+            let orphan_sweep_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                process::reclaim_all_orphans(orphan_sweep_handle).await;
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

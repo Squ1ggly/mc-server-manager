@@ -209,6 +209,27 @@ async fn reclaim_orphaned_server(app: &AppHandle, server_id: &str, server_dir: &
     emit_event(app, events::SERVER_CONSOLE, batch);
 }
 
+/// Reclaims every server orphaned by a previous crash or force-kill, at app
+/// startup. Per-server reclaim already runs on start, but that only fires when
+/// the user restarts that specific server — on Unix nothing ties a child to the
+/// app's lifetime, so a crash can leave servers running (holding world locks,
+/// ports, memory) until each is individually restarted. This cleans them all up
+/// once, off the startup path.
+pub async fn reclaim_all_orphans(app: AppHandle) {
+    let state = app.state::<crate::state::AppState>();
+    let servers: Vec<(String, std::path::PathBuf)> = {
+        let registry = state.registry.lock().await;
+        registry
+            .servers
+            .iter()
+            .map(|config| (config.id.clone(), state.server_dir(config)))
+            .collect()
+    };
+    for (server_id, server_dir) in servers {
+        reclaim_orphaned_server(&app, &server_id, &server_dir).await;
+    }
+}
+
 async fn wait_for_process_exit(system: &mut sysinfo::System, pid: sysinfo::Pid) {
     let poll_interval = Duration::from_millis(250);
     let attempts = ORPHAN_EXIT_WAIT.as_millis() / poll_interval.as_millis();
