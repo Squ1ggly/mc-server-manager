@@ -1,7 +1,9 @@
-//! Application state managed by Tauri. Global settings live in a YAML next
-//! to the binary (or the user config dir when that's read-only); each
-//! server's settings live in its own folder. App data keeps the satellite
-//! stores: scheduled tasks, player rosters, and managed Java runtimes.
+//! Application state managed by Tauri. Cross-server / app-level state (the
+//! known-servers list, the default server location, scheduled tasks, player
+//! rosters, and installed-plugin tracking) lives in a SQLite database — see
+//! `db.rs`. Each server's own settings stay in its own folder as YAML.
+//! App data also keeps a couple of satellite directories: managed Java
+//! runtimes and the (deprecated but still used as the default) servers dir.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -10,25 +12,29 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
+use crate::db::Db;
 use crate::error::AppResult;
 use crate::process::RunningMap;
 use crate::roster::RosterStore;
 use crate::scheduler::{self, ScheduledTask};
 use crate::servers::{self, ServerConfig, ServerRegistry};
-use crate::settings::{self, GlobalSettings};
+use crate::settings;
 
-const TASKS_FILE_NAME: &str = "schedules.json";
 const SERVERS_DIR_NAME: &str = "servers";
 const BACKUPS_DIR_NAME: &str = "backups";
 const MANAGED_JAVA_DIR_NAME: &str = "java";
-const ROSTERS_DIR_NAME: &str = "rosters";
+
+/// Key in `kv_settings` for the default parent directory new servers are
+/// created under.
+const SERVERS_BASE_DIR_KEY: &str = "servers_base_dir";
 
 pub struct AppState {
     data_dir: PathBuf,
-    settings_path: PathBuf,
     pub http: reqwest::Client,
     pub registry: Mutex<ServerRegistry>,
-    pub settings: Mutex<GlobalSettings>,
+    /// The app-wide SQLite database. Shared with `RosterStore` (an `Arc`) so
+    /// both can reach it without state.rs mediating every roster write.
+    pub db: Arc<Mutex<Db>>,
     pub tasks: Mutex<Vec<ScheduledTask>>,
     pub running: RunningMap,
     /// Serializes automatic Java downloads so two servers starting at once
@@ -49,34 +55,41 @@ impl AppState {
         std::fs::create_dir_all(data_dir.join(SERVERS_DIR_NAME))?;
         std::fs::create_dir_all(data_dir.join(MANAGED_JAVA_DIR_NAME))?;
 
-        let settings_path = settings::global_settings_path(app)?;
-        let global = settings::load_or_migrate(app, &settings_path, &data_dir)?;
-        let registry = ServerRegistry::load_from_dirs(&global.server_dirs);
+        let db_path = crate::db::resolve_db_path(app)?;
+        let db = Db::open(db_path)?;
 
-        let tasks = scheduler::load_tasks(&data_dir.join(TASKS_FILE_NAME))?;
+        // First run: seed a sensible default server location.
+        if db.get_kv(SERVERS_BASE_DIR_KEY)?.is_none() {
+            let default_dir = settings::default_servers_base_dir(app, &data_dir);
+            db.set_kv(SERVERS_BASE_DIR_KEY, &default_dir.to_string_lossy())?;
+        }
+
+        // Known servers whose folder or settings file can no longer be found
+        // are dropped from the list here, rather than resurrected forever.
+        let known_servers = db.list_known_servers()?;
+        let (registry, missing_ids) = ServerRegistry::load_known(&known_servers);
+        for id in &missing_ids {
+            if let Err(error) = db.remove_known_server(id) {
+                log::warn!("could not prune unreachable server {id}: {error}");
+            }
+        }
+
+        let tasks = scheduler::load_tasks(&db)?;
+
+        let db = Arc::new(Mutex::new(db));
 
         let state = Self {
             http: build_http_client()?,
             registry: Mutex::new(registry),
-            settings: Mutex::new(global),
             tasks: Mutex::new(tasks),
             running: Arc::new(Mutex::new(HashMap::new())),
             java_download_lock: Mutex::new(()),
-            rosters: RosterStore::new(data_dir.join(ROSTERS_DIR_NAME)),
+            rosters: RosterStore::new(Arc::clone(&db)),
             forwarded: Mutex::new(std::collections::HashSet::new()),
-            settings_path,
+            db,
             data_dir,
         };
         Ok(state)
-    }
-
-    /// Where the global settings YAML lives.
-    pub fn settings_path(&self) -> PathBuf {
-        self.settings_path.clone()
-    }
-
-    pub fn tasks_path(&self) -> PathBuf {
-        self.data_dir.join(TASKS_FILE_NAME)
     }
 
     pub fn servers_dir(&self) -> PathBuf {
@@ -106,24 +119,33 @@ impl AppState {
         self.data_dir.join(MANAGED_JAVA_DIR_NAME)
     }
 
-    /// Persists a newly created server: its own YAML plus the global list
-    /// of server folders.
-    pub async fn persist_new_server(&self, config: &ServerConfig) -> AppResult<()> {
-        servers::save_server_settings(config)?;
-
-        let mut settings = self.settings.lock().await;
-        if !settings.server_dirs.contains(&config.dir) {
-            settings.server_dirs.push(config.dir.clone());
-            settings.save(&self.settings_path)?;
-        }
-        Ok(())
+    /// The default parent directory new servers are created under.
+    pub async fn servers_base_dir(&self) -> AppResult<PathBuf> {
+        let db = self.db.lock().await;
+        let stored = db.get_kv(SERVERS_BASE_DIR_KEY)?;
+        Ok(stored
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.servers_dir()))
     }
 
-    /// Forgets a deleted server's folder in the global list.
-    pub async fn persist_removed_server(&self, server_dir: &Path) -> AppResult<()> {
-        let mut settings = self.settings.lock().await;
-        settings.server_dirs.retain(|dir| dir != server_dir);
-        settings.save(&self.settings_path)
+    pub async fn set_servers_base_dir(&self, dir: &Path) -> AppResult<()> {
+        let db = self.db.lock().await;
+        db.set_kv(SERVERS_BASE_DIR_KEY, &dir.to_string_lossy())
+    }
+
+    /// Persists a newly created (or imported) server: its own YAML plus an
+    /// entry in the database's known-servers list.
+    pub async fn persist_new_server(&self, config: &ServerConfig) -> AppResult<()> {
+        servers::save_server_settings(config)?;
+        let db = self.db.lock().await;
+        db.add_known_server(&config.id, &config.dir)
+    }
+
+    /// Drops a server from the known-servers list (used on delete, and when a
+    /// server's folder can no longer be found).
+    pub async fn forget_known_server(&self, server_id: &str) -> AppResult<()> {
+        let db = self.db.lock().await;
+        db.remove_known_server(server_id)
     }
 }
 

@@ -7,6 +7,7 @@
   import Button from "./lib/components/Button.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import CreateServerWizard from "./lib/views/CreateServerWizard.svelte";
+  import ImportServerModal from "./lib/views/ImportServerModal.svelte";
   import { contextMenuStore, type MenuEntry } from "./lib/stores/contextMenu.svelte";
   import { openPath } from "@tauri-apps/plugin-opener";
   import { api, type ServerConfig } from "./lib/api";
@@ -43,6 +44,7 @@
 
   let route = $state<Route>({ view: "home" });
   let wizardOpen = $state(false);
+  let importOpen = $state(false);
   let javaDownload = $state<InstallProgressEvent | null>(null);
   let javaPillTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -242,6 +244,7 @@
   function appMenuEntries(): MenuEntry[] {
     return [
       { label: "New server", emoji: "➕", action: () => (wizardOpen = true) },
+      { label: "Import server…", emoji: "📥", action: () => (importOpen = true) },
       {
         label: "Refresh",
         emoji: "🔄",
@@ -349,6 +352,7 @@
   <div class="content">
     <header class="bulkbar">
       <Button onclick={() => (wizardOpen = true)}>＋ New server</Button>
+      <Button variant="soft" onclick={() => (importOpen = true)}>📥 Import</Button>
       <span class="bulk-divider"></span>
       <Button variant="soft" disabled={bulkBusy} onclick={startAll}>▶ Start all</Button>
       <Button variant="danger" disabled={bulkBusy} onclick={stopAll}>⏹ Stop all</Button>
@@ -386,6 +390,11 @@
 <svelte:window oncontextmenu={handleGlobalContextMenu} />
 
 <CreateServerWizard open={wizardOpen} onclose={() => (wizardOpen = false)} />
+<ImportServerModal
+  open={importOpen}
+  onclose={() => (importOpen = false)}
+  onimported={() => runWithToast(() => serversStore.refresh())}
+/>
 <ContextMenu />
 <ReasonPrompt />
 <ConfirmDialog />

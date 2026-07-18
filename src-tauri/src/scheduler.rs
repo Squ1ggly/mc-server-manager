@@ -1,7 +1,6 @@
-//! Scheduled tasks: cron-driven commands, restarts, and backups, persisted
-//! to `schedules.json` and executed by a background loop.
+//! Scheduled tasks: cron-driven commands, restarts, and backups, persisted in
+//! the app database and executed by a background loop.
 
-use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -10,10 +9,14 @@ use croner::Cron;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::process;
 use crate::service;
 use crate::state::AppState;
+
+/// Key in `kv_settings` holding the JSON array of all scheduled tasks.
+const TASKS_KEY: &str = "scheduled_tasks";
 
 /// How often the scheduler checks for due tasks. Cron resolution is one
 /// minute, so this comfortably never skips an occurrence.
@@ -41,20 +44,16 @@ pub enum TaskAction {
     Stop,
 }
 
-pub fn load_tasks(path: &Path) -> AppResult<Vec<ScheduledTask>> {
-    if !path.exists() {
-        return Ok(Vec::new());
+pub fn load_tasks(db: &Db) -> AppResult<Vec<ScheduledTask>> {
+    match db.get_kv(TASKS_KEY)? {
+        Some(json) => Ok(serde_json::from_str(&json)?),
+        None => Ok(Vec::new()),
     }
-
-    let contents = std::fs::read_to_string(path)?;
-    let tasks = serde_json::from_str(&contents)?;
-    Ok(tasks)
 }
 
-pub fn save_tasks(path: &Path, tasks: &[ScheduledTask]) -> AppResult<()> {
-    let serialized = serde_json::to_string_pretty(tasks)?;
-    crate::fsutil::atomic_write(path, serialized.as_bytes())?;
-    Ok(())
+pub fn save_tasks(db: &Db, tasks: &[ScheduledTask]) -> AppResult<()> {
+    let serialized = serde_json::to_string(tasks)?;
+    db.set_kv(TASKS_KEY, &serialized)
 }
 
 pub fn validate_cron(expression: &str) -> AppResult<()> {

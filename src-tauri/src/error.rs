@@ -48,6 +48,9 @@ pub enum AppError {
 
     #[error("scheduled task not found: {0}")]
     TaskNotFound(String),
+
+    #[error("database error: {0}")]
+    Database(#[from] rusqlite::Error),
 }
 
 impl Serialize for AppError {

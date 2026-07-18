@@ -119,19 +119,32 @@ pub struct ServerRegistry {
 }
 
 impl ServerRegistry {
-    /// Builds the registry by reading every known server folder's YAML.
-    /// Folders that vanished or lost their file are skipped with a warning.
-    pub fn load_from_dirs(server_dirs: &[PathBuf]) -> Self {
+    /// Builds the registry from the database's known-server list (id, dir
+    /// pairs), reading each folder's own YAML. Folders that vanished or lost
+    /// their settings file are reported back as `missing_ids` so the caller
+    /// can prune them from the known-servers list instead of resurrecting a
+    /// dead entry every time the app starts.
+    pub fn load_known(known_servers: &[(String, PathBuf)]) -> (Self, Vec<String>) {
         let mut servers = Vec::new();
-        for dir in server_dirs {
+        let mut missing_ids = Vec::new();
+        for (id, dir) in known_servers {
             match load_server_settings(dir) {
-                Ok(config) => servers.push(config),
+                Ok(mut config) => {
+                    // The database's id is authoritative (a folder could in
+                    // principle be a stale copy with a different id inside).
+                    config.id = id.clone();
+                    servers.push(config);
+                }
                 Err(error) => {
-                    log::warn!("skipping server folder {}: {error}", dir.display());
+                    log::warn!(
+                        "removing unreachable server {id} ({}): {error}",
+                        dir.display()
+                    );
+                    missing_ids.push(id.clone());
                 }
             }
         }
-        Self { servers }
+        (Self { servers }, missing_ids)
     }
 
     pub fn find(&self, server_id: &str) -> AppResult<&ServerConfig> {
@@ -235,6 +248,38 @@ pub fn new_server_config(request: &CreateServerRequest, dir: PathBuf) -> ServerC
         start_command: normalized_option(&request.start_command),
         backup_retention: None,
         created_at_unix,
+    }
+}
+
+/// Builds (or recovers) a config for an existing folder being imported into
+/// Blockparty. If the folder already has our settings YAML — e.g. it was
+/// managed before and the app just lost track of it — that file wins and the
+/// supplied fields are ignored; otherwise a fresh config is written for it.
+pub fn config_for_import(
+    dir: &Path,
+    name: String,
+    loader: Loader,
+    mc_version: String,
+    memory_mb: u32,
+) -> ServerConfig {
+    if let Ok(mut existing) = load_server_settings(dir) {
+        existing.dir = dir.to_path_buf();
+        return existing;
+    }
+
+    ServerConfig {
+        id: uuid::Uuid::new_v4().to_string(),
+        name,
+        mc_version,
+        loader,
+        memory_mb,
+        java_path: None,
+        dir: dir.to_path_buf(),
+        backups_dir: None,
+        java_args: None,
+        start_command: None,
+        backup_retention: None,
+        created_at_unix: current_unix_time(),
     }
 }
 

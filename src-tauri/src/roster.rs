@@ -1,14 +1,15 @@
 //! Per-server player history: everyone who has ever joined, how often, how
 //! long they've played, and how many times they were kicked. Fed by console
-//! signals and persisted as one JSON file per server in app data.
+//! signals and persisted as one JSON blob per server in the app database.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::error::AppResult;
+use crate::db::Db;
 use crate::servers::current_unix_time;
 
 /// The most recent chat lines kept per player.
@@ -86,16 +87,18 @@ pub struct RosterEntry {
     pub total_play_seconds: u64,
 }
 
-/// All rosters, loaded lazily per server and saved after every change.
+/// All rosters, loaded lazily per server and saved after every change. The
+/// `Db` is shared (`Arc`) with `AppState`, which holds the same instance
+/// behind its own lock for settings/known-servers/plugin-install access.
 pub struct RosterStore {
-    rosters_dir: PathBuf,
+    db: Arc<Mutex<Db>>,
     by_server: Mutex<HashMap<String, Roster>>,
 }
 
 impl RosterStore {
-    pub fn new(rosters_dir: PathBuf) -> Self {
+    pub fn new(db: Arc<Mutex<Db>>) -> Self {
         Self {
-            rosters_dir,
+            db,
             by_server: Mutex::new(HashMap::new()),
         }
     }
@@ -103,7 +106,7 @@ impl RosterStore {
     pub async fn record_join(&self, server_id: &str, player_name: &str) {
         let now = current_unix_time();
         let mut rosters = self.by_server.lock().await;
-        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+        let roster = self.loaded_roster(&mut rosters, server_id).await;
 
         let record = roster.players.entry(player_name.to_string()).or_default();
         if record.first_joined_unix == 0 {
@@ -113,42 +116,42 @@ impl RosterStore {
         record.join_count += 1;
         roster.active_sessions.insert(player_name.to_string(), now);
 
-        self.save(server_id, roster);
+        self.save(server_id, roster).await;
     }
 
     pub async fn record_leave(&self, server_id: &str, player_name: &str) {
         let now = current_unix_time();
         let mut rosters = self.by_server.lock().await;
-        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+        let roster = self.loaded_roster(&mut rosters, server_id).await;
 
         close_session(roster, player_name, now);
-        self.save(server_id, roster);
+        self.save(server_id, roster).await;
     }
 
     pub async fn record_kick(&self, server_id: &str, player_name: &str) {
         let mut rosters = self.by_server.lock().await;
-        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+        let roster = self.loaded_roster(&mut rosters, server_id).await;
 
         let record = roster.players.entry(player_name.to_string()).or_default();
         record.kick_count += 1;
 
-        self.save(server_id, roster);
+        self.save(server_id, roster).await;
     }
 
     pub async fn record_game_mode(&self, server_id: &str, player_name: &str, mode: &str) {
         let mut rosters = self.by_server.lock().await;
-        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+        let roster = self.loaded_roster(&mut rosters, server_id).await;
 
         let record = roster.players.entry(player_name.to_string()).or_default();
         record.last_game_mode = Some(mode.to_string());
 
-        self.save(server_id, roster);
+        self.save(server_id, roster).await;
     }
 
     pub async fn record_chat(&self, server_id: &str, player_name: &str, message: &str) {
         let now = current_unix_time();
         let mut rosters = self.by_server.lock().await;
-        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+        let roster = self.loaded_roster(&mut rosters, server_id).await;
 
         let record = roster.players.entry(player_name.to_string()).or_default();
         record.chat_count += 1;
@@ -161,7 +164,7 @@ impl RosterStore {
             record.chat_log.drain(0..overflow);
         }
 
-        self.save(server_id, roster);
+        self.save(server_id, roster).await;
     }
 
     /// Full detail for one player, for the player page.
@@ -175,7 +178,7 @@ impl RosterStore {
     ) -> Option<PlayerDetail> {
         let now = current_unix_time();
         let mut rosters = self.by_server.lock().await;
-        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+        let roster = self.loaded_roster(&mut rosters, server_id).await;
 
         let record = roster.players.get(player_name)?;
         let live_session_seconds = roster
@@ -207,13 +210,13 @@ impl RosterStore {
     pub async fn close_all_sessions(&self, server_id: &str) {
         let now = current_unix_time();
         let mut rosters = self.by_server.lock().await;
-        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+        let roster = self.loaded_roster(&mut rosters, server_id).await;
 
         let open_players: Vec<String> = roster.active_sessions.keys().cloned().collect();
         for player_name in open_players {
             close_session(roster, &player_name, now);
         }
-        self.save(server_id, roster);
+        self.save(server_id, roster).await;
     }
 
     /// The full history for one server, enriched with online/banned state,
@@ -226,7 +229,7 @@ impl RosterStore {
     ) -> Vec<RosterEntry> {
         let now = current_unix_time();
         let mut rosters = self.by_server.lock().await;
-        let roster = loaded_roster(&mut rosters, &self.rosters_dir, server_id);
+        let roster = self.loaded_roster(&mut rosters, server_id).await;
 
         let mut entries: Vec<RosterEntry> = roster
             .players
@@ -255,23 +258,54 @@ impl RosterStore {
         entries
     }
 
-    /// Drops a deleted server's history from cache and disk.
+    /// Drops a deleted server's history from cache and the database.
     pub async fn forget(&self, server_id: &str) {
         let mut rosters = self.by_server.lock().await;
         rosters.remove(server_id);
+        drop(rosters);
 
-        let path = roster_path(&self.rosters_dir, server_id);
-        if !path.exists() {
-            return;
-        }
-        if let Err(error) = std::fs::remove_file(&path) {
+        let db = self.db.lock().await;
+        if let Err(error) = db.delete_roster(server_id) {
             log::warn!("could not remove roster for {server_id}: {error}");
         }
     }
 
-    fn save(&self, server_id: &str, roster: &Roster) {
-        let result = save_roster(&self.rosters_dir, server_id, roster);
-        if let Err(error) = result {
+    /// Gets the cached roster for a server, loading it from the database on
+    /// first use.
+    async fn loaded_roster<'a>(
+        &self,
+        rosters: &'a mut HashMap<String, Roster>,
+        server_id: &str,
+    ) -> &'a mut Roster {
+        if !rosters.contains_key(server_id) {
+            let loaded = self.load_from_db(server_id).await;
+            rosters.insert(server_id.to_string(), loaded);
+        }
+        rosters.get_mut(server_id).expect("just inserted")
+    }
+
+    async fn load_from_db(&self, server_id: &str) -> Roster {
+        let db = self.db.lock().await;
+        match db.load_roster_json(server_id) {
+            Ok(Some(json)) => serde_json::from_str(&json).unwrap_or_default(),
+            Ok(None) => Roster::default(),
+            Err(error) => {
+                log::warn!("could not load roster for {server_id}: {error}");
+                Roster::default()
+            }
+        }
+    }
+
+    async fn save(&self, server_id: &str, roster: &Roster) {
+        let serialized = match serde_json::to_string(roster) {
+            Ok(serialized) => serialized,
+            Err(error) => {
+                log::warn!("failed to serialize roster for {server_id}: {error}");
+                return;
+            }
+        };
+        let db = self.db.lock().await;
+        if let Err(error) = db.save_roster_json(server_id, &serialized) {
             log::warn!("failed to save player roster for {server_id}: {error}");
         }
     }
@@ -286,40 +320,6 @@ fn close_session(roster: &mut Roster, player_name: &str, now: u64) {
     };
     record.total_play_seconds += now.saturating_sub(session_start);
     record.last_seen_unix = now;
-}
-
-/// Gets the cached roster for a server, loading it from disk on first use.
-fn loaded_roster<'a>(
-    rosters: &'a mut HashMap<String, Roster>,
-    rosters_dir: &Path,
-    server_id: &str,
-) -> &'a mut Roster {
-    rosters
-        .entry(server_id.to_string())
-        .or_insert_with(|| load_roster(rosters_dir, server_id))
-}
-
-fn load_roster(rosters_dir: &Path, server_id: &str) -> Roster {
-    let path = roster_path(rosters_dir, server_id);
-    if !path.exists() {
-        return Roster::default();
-    }
-
-    let loaded = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|contents| serde_json::from_str(&contents).ok());
-    loaded.unwrap_or_default()
-}
-
-fn save_roster(rosters_dir: &Path, server_id: &str, roster: &Roster) -> AppResult<()> {
-    std::fs::create_dir_all(rosters_dir)?;
-    let serialized = serde_json::to_string_pretty(roster)?;
-    crate::fsutil::atomic_write(&roster_path(rosters_dir, server_id), serialized.as_bytes())?;
-    Ok(())
-}
-
-fn roster_path(rosters_dir: &Path, server_id: &str) -> PathBuf {
-    rosters_dir.join(format!("{server_id}.json"))
 }
 
 /// One entry from the server's `banned-players.json`.

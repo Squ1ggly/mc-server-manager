@@ -3,7 +3,7 @@
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { getVersion } from "@tauri-apps/api/app";
-  import { api, type AppSettings, type JavaInstall } from "../api";
+  import { api, type AppSettings, type JavaInstall, type StorageLocation } from "../api";
   import { toastsStore } from "../stores/toasts.svelte";
   import Button from "../components/Button.svelte";
 
@@ -29,10 +29,13 @@
   let settings = $state<AppSettings | null>(null);
   let javaInstalls = $state<JavaInstall[]>([]);
   let detectingJava = $state(false);
+  let storageLocation = $state<StorageLocation | null>(null);
+  let movingStorage = $state(false);
 
   $effect(() => {
     loadSettings();
     detectJava();
+    loadStorageLocation();
   });
 
   async function loadSettings() {
@@ -56,6 +59,45 @@
       toastsStore.success("Default server location updated 📁");
     } catch (error) {
       toastsStore.error(String(error));
+    }
+  }
+
+  async function loadStorageLocation() {
+    try {
+      storageLocation = await api.getStorageLocation();
+    } catch (error) {
+      toastsStore.error(String(error));
+    }
+  }
+
+  async function browseStorageLocation() {
+    movingStorage = true;
+    try {
+      const picked = await openFolderDialog({
+        directory: true,
+        title: "Choose where Blockparty stores its database",
+      });
+      if (typeof picked !== "string") {
+        return;
+      }
+      storageLocation = await api.setStorageLocation(picked);
+      toastsStore.success("App storage moved 📦");
+    } catch (error) {
+      toastsStore.error(String(error));
+    } finally {
+      movingStorage = false;
+    }
+  }
+
+  async function resetStorageLocation() {
+    movingStorage = true;
+    try {
+      storageLocation = await api.resetStorageLocation();
+      toastsStore.success("App storage moved back to the default location 📦");
+    } catch (error) {
+      toastsStore.error(String(error));
+    } finally {
+      movingStorage = false;
     }
   }
 
@@ -109,6 +151,35 @@
       where they are.
     </p>
     <code class="path">{settings?.serversBaseDir ?? "…"}</code>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>
+        📦 App storage
+        {#if storageLocation}
+          <span class="badge" class:custom={!storageLocation.isDefault}>
+            {storageLocation.isDefault ? "Default" : "Custom"}
+          </span>
+        {/if}
+      </h3>
+      <span class="button-row">
+        {#if storageLocation && !storageLocation.isDefault}
+          <Button variant="ghost" disabled={movingStorage} onclick={resetStorageLocation}>
+            Reset to default
+          </Button>
+        {/if}
+        <Button variant="soft" disabled={movingStorage} onclick={browseStorageLocation}>
+          {movingStorage ? "Moving…" : "Change…"}
+        </Button>
+      </span>
+    </div>
+    <p class="hint">
+      Blockparty's own database — settings, the list of known servers, scheduled tasks,
+      and player history. Changing this moves the database file to the new location;
+      resetting moves it back to the default. Each server's own files never move.
+    </p>
+    <code class="path">{storageLocation?.dir ?? "…"}</code>
   </div>
 
   <div class="card">
@@ -224,6 +295,29 @@
   h3 {
     margin: 0 0 0.4rem;
     font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--mint);
+    background: var(--mint-soft);
+    border-radius: var(--radius-sm);
+    padding: 0.15em 0.6em;
+  }
+
+  .badge.custom {
+    color: var(--peach);
+    background: var(--peach-soft);
+  }
+
+  .button-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
   }
 
   .hint {

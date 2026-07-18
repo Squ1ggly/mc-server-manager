@@ -2,13 +2,14 @@
 //! the domain services. The future web panel reuses the same services.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager, State};
 
 use serde::Deserialize;
 
 use crate::backups::{self, BackupInfo};
+use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::files;
 use crate::installers::{self, vanilla};
@@ -21,8 +22,14 @@ use crate::roster::{self, RosterEntry};
 use crate::scheduler::{self, ScheduledTask};
 use crate::servers::{self, CreateServerRequest, Loader, ServerConfig, ServerStatus};
 use crate::service;
-use crate::settings::AppSettings;
 use crate::state::AppState;
+
+/// The subset of app-wide state exposed to the frontend as "Settings".
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettings {
+    pub servers_base_dir: PathBuf,
+}
 
 #[tauri::command]
 pub async fn list_servers(state: State<'_, AppState>) -> AppResult<Vec<ServerConfig>> {
@@ -101,6 +108,68 @@ pub async fn create_server(
     Ok(config)
 }
 
+/// An existing server folder to add to Blockparty's known-servers list.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportServerRequest {
+    pub dir: PathBuf,
+    pub name: String,
+    pub loader: Loader,
+    pub mc_version: String,
+    pub memory_mb: u32,
+}
+
+/// Adds an existing server folder to the known-servers list — for a server
+/// created outside Blockparty, or one whose entry was lost (e.g. the database
+/// was reset). If the folder already carries Blockparty's own settings file,
+/// that file's data wins over the supplied fields; nothing on disk is
+/// otherwise touched.
+#[tauri::command]
+pub async fn import_server(
+    state: State<'_, AppState>,
+    request: ImportServerRequest,
+) -> AppResult<ServerConfig> {
+    if !request.dir.is_dir() {
+        return Err(AppError::InvalidInput(
+            "that folder doesn't exist".to_string(),
+        ));
+    }
+    if request.name.trim().is_empty() {
+        return Err(AppError::InvalidInput("server name is empty".to_string()));
+    }
+
+    {
+        let registry = state.registry.lock().await;
+        let already_known = registry
+            .servers
+            .iter()
+            .find(|server| server.dir == request.dir);
+        if let Some(existing) = already_known {
+            return Ok(existing.clone());
+        }
+    }
+
+    let memory_mb = if request.memory_mb == 0 {
+        2048
+    } else {
+        request.memory_mb
+    };
+    let config = servers::config_for_import(
+        &request.dir,
+        request.name.trim().to_string(),
+        request.loader,
+        request.mc_version.trim().to_string(),
+        memory_mb,
+    );
+
+    {
+        let mut registry = state.registry.lock().await;
+        registry.add(config.clone());
+    }
+    state.persist_new_server(&config).await?;
+    Ok(config)
+}
+
 /// Available versions for one server software, newest first.
 #[tauri::command]
 pub async fn list_loader_versions(
@@ -141,22 +210,27 @@ pub async fn delete_server(state: State<'_, AppState>, server_id: String) -> App
     };
 
     let server_dir = state.server_dir(&removed_config);
-    state.persist_removed_server(&server_dir).await?;
+    state.forget_known_server(&server_id).await?;
     if server_dir.exists() {
         std::fs::remove_dir_all(&server_dir)?;
     }
 
-    // A deleted server takes its satellite data with it: scheduled tasks
-    // and player history.
+    // A deleted server takes its satellite data with it: scheduled tasks,
+    // player history, and any tracked plugin/mod installs.
     {
         let mut tasks = state.tasks.lock().await;
         let before = tasks.len();
         tasks.retain(|task| task.server_id != server_id);
         if tasks.len() != before {
-            scheduler::save_tasks(&state.tasks_path(), &tasks)?;
+            let db = state.db.lock().await;
+            scheduler::save_tasks(&db, &tasks)?;
         }
     }
     state.rosters.forget(&server_id).await;
+    {
+        let db = state.db.lock().await;
+        db.clear_plugin_installs(&server_id)?;
+    }
     Ok(())
 }
 
@@ -335,8 +409,9 @@ pub async fn kill_all_java(state: State<'_, AppState>) -> AppResult<u32> {
 
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> AppResult<AppSettings> {
-    let settings = state.settings.lock().await;
-    Ok(settings.clone())
+    Ok(AppSettings {
+        servers_base_dir: state.servers_base_dir().await?,
+    })
 }
 
 /// Shows the wizard where a server's files would land for a given name and
@@ -349,10 +424,7 @@ pub async fn preview_server_dir(
 ) -> AppResult<PathBuf> {
     let parent = match location_parent {
         Some(chosen) => chosen,
-        None => {
-            let settings = state.settings.lock().await;
-            settings.servers_base_dir.clone()
-        }
+        None => state.servers_base_dir().await?,
     };
 
     let slug = servers::folder_slug(&name);
@@ -371,11 +443,10 @@ pub async fn set_servers_base_dir(
         return Err(AppError::InvalidInput("path is empty".to_string()));
     }
     std::fs::create_dir_all(&path)?;
-
-    let mut settings = state.settings.lock().await;
-    settings.servers_base_dir = path;
-    settings.save(&state.settings_path())?;
-    Ok(settings.clone())
+    state.set_servers_base_dir(&path).await?;
+    Ok(AppSettings {
+        servers_base_dir: path,
+    })
 }
 
 /// Resolves the parent directory for a new server. A freshly chosen folder
@@ -384,17 +455,102 @@ async fn resolve_location_parent(
     state: &State<'_, AppState>,
     chosen_parent: Option<PathBuf>,
 ) -> AppResult<PathBuf> {
-    let mut settings = state.settings.lock().await;
-
     let Some(chosen) = chosen_parent else {
-        return Ok(settings.servers_base_dir.clone());
+        return state.servers_base_dir().await;
     };
 
-    if chosen != settings.servers_base_dir {
-        settings.servers_base_dir = chosen.clone();
-        settings.save(&state.settings_path())?;
+    if chosen != state.servers_base_dir().await? {
+        state.set_servers_base_dir(&chosen).await?;
     }
     Ok(chosen)
+}
+
+/// Where the app database currently lives, for the Settings UI.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageLocation {
+    pub dir: String,
+    pub is_default: bool,
+}
+
+#[tauri::command]
+pub async fn get_storage_location(app: AppHandle) -> AppResult<StorageLocation> {
+    let default_dir = db::default_db_dir(&app)?;
+    let current_dir = db::resolve_db_dir(&app)?;
+    Ok(StorageLocation {
+        is_default: paths_match(&current_dir, &default_dir),
+        dir: current_dir.to_string_lossy().to_string(),
+    })
+}
+
+/// Moves the database to a new directory: relocates the file, then writes
+/// (or, if choosing the default location, removes) the `.location` pointer
+/// file that always lives in the default app-data directory.
+#[tauri::command]
+pub async fn set_storage_location(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    dir: PathBuf,
+) -> AppResult<StorageLocation> {
+    relocate_storage(&app, &state, dir).await
+}
+
+/// Moves the database back to the default location and removes the pointer
+/// file, undoing `set_storage_location`.
+#[tauri::command]
+pub async fn reset_storage_location(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<StorageLocation> {
+    let default_dir = db::default_db_dir(&app)?;
+    relocate_storage(&app, &state, default_dir).await
+}
+
+async fn relocate_storage(
+    app: &AppHandle,
+    state: &AppState,
+    dir: PathBuf,
+) -> AppResult<StorageLocation> {
+    if dir.as_os_str().is_empty() {
+        return Err(AppError::InvalidInput("path is empty".to_string()));
+    }
+    std::fs::create_dir_all(&dir)?;
+
+    let default_dir = db::default_db_dir(app)?;
+    let is_default = paths_match(&dir, &default_dir);
+    let new_db_path = dir.join(db::DB_FILE_NAME);
+
+    {
+        let mut db = state.db.lock().await;
+        db.relocate(new_db_path)?;
+    }
+
+    std::fs::create_dir_all(&default_dir)?;
+    let pointer_path = default_dir.join(db::LOCATION_POINTER_FILE);
+    if is_default {
+        if pointer_path.exists() {
+            std::fs::remove_file(&pointer_path)?;
+        }
+    } else {
+        crate::fsutil::atomic_write(&pointer_path, dir.to_string_lossy().as_bytes())?;
+    }
+
+    Ok(StorageLocation {
+        dir: dir.to_string_lossy().to_string(),
+        is_default,
+    })
+}
+
+/// Whether two directories are "the same location" for the purpose of
+/// deciding whether the pointer file should exist. Canonicalizes first so
+/// trivial differences (trailing slash, case on Windows) don't cause a
+/// spurious "not default" reading; falls back to plain equality when either
+/// side can't be resolved (e.g. doesn't exist yet).
+fn paths_match(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 /// Fields of a server a user may edit after creation.
@@ -1039,7 +1195,10 @@ pub async fn upsert_task(
         None => tasks.push(task.clone()),
     }
 
-    scheduler::save_tasks(&state.tasks_path(), &tasks)?;
+    {
+        let db = state.db.lock().await;
+        scheduler::save_tasks(&db, &tasks)?;
+    }
     Ok(task)
 }
 
@@ -1052,7 +1211,10 @@ pub async fn delete_task(state: State<'_, AppState>, task_id: String) -> AppResu
         .ok_or_else(|| AppError::TaskNotFound(task_id.clone()))?;
     tasks.remove(existing_position);
 
-    scheduler::save_tasks(&state.tasks_path(), &tasks)?;
+    {
+        let db = state.db.lock().await;
+        scheduler::save_tasks(&db, &tasks)?;
+    }
     Ok(())
 }
 

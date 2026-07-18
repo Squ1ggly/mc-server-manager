@@ -92,6 +92,19 @@ export interface AppSettings {
   serversBaseDir: string;
 }
 
+export interface StorageLocation {
+  dir: string;
+  isDefault: boolean;
+}
+
+export interface ImportServerRequest {
+  dir: string;
+  name: string;
+  loader: Loader;
+  mcVersion: string;
+  memoryMb: number;
+}
+
 export interface Property {
   key: string;
   value: string;
@@ -209,6 +222,8 @@ export const api = {
     invoke<McVersion[]>("list_loader_versions", { loader }),
   createServer: (request: CreateServerRequest) =>
     invoke<ServerConfig>("create_server", { request }),
+  importServer: (request: ImportServerRequest) =>
+    invoke<ServerConfig>("import_server", { request }),
   deleteServer: (serverId: string) => invoke<void>("delete_server", { serverId }),
   startServer: (serverId: string) => invoke<void>("start_server", { serverId }),
   stopServer: (serverId: string) => invoke<void>("stop_server", { serverId }),
@@ -224,6 +239,10 @@ export const api = {
     invoke<AppSettings>("set_servers_base_dir", { path }),
   previewServerDir: (name: string, locationParent: string | null) =>
     invoke<string>("preview_server_dir", { name, locationParent }),
+  getStorageLocation: () => invoke<StorageLocation>("get_storage_location"),
+  setStorageLocation: (dir: string) =>
+    invoke<StorageLocation>("set_storage_location", { dir }),
+  resetStorageLocation: () => invoke<StorageLocation>("reset_storage_location"),
   restartServer: (serverId: string) => invoke<void>("restart_server", { serverId }),
   serverPlayers: () => invoke<Record<string, string[]>>("server_players"),
   getPlayerRoster: (serverId: string) =>

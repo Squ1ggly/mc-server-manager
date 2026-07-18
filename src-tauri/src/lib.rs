@@ -1,6 +1,7 @@
 mod backups;
 mod commands;
 mod console;
+mod db;
 mod error;
 mod events;
 mod files;
@@ -70,6 +71,7 @@ pub fn run() {
             commands::list_servers,
             commands::list_loader_versions,
             commands::create_server,
+            commands::import_server,
             commands::delete_server,
             commands::start_server,
             commands::stop_server,
@@ -90,6 +92,9 @@ pub fn run() {
             commands::get_settings,
             commands::set_servers_base_dir,
             commands::preview_server_dir,
+            commands::get_storage_location,
+            commands::set_storage_location,
+            commands::reset_storage_location,
             commands::update_server,
             commands::set_server_icon,
             commands::get_server_icon,
