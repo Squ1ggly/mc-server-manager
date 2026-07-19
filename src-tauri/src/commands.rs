@@ -268,9 +268,12 @@ fn close_forward_after_stop(app: &AppHandle, server_id: String) {
         else {
             return;
         };
-        let _ =
-            portforward::close(address::forward_protocol(config.loader), external_port, lan_ip)
-                .await;
+        let _ = portforward::close(
+            address::forward_protocol(config.loader),
+            external_port,
+            lan_ip,
+        )
+        .await;
     });
 }
 

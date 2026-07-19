@@ -125,7 +125,10 @@ pub fn run() {
         .run(|app_handle, event| {
             // `code` is `Some` only when we requested the exit ourselves (the
             // `app_handle.exit(0)` below); skip re-entering cleanup for that one.
-            if let tauri::RunEvent::ExitRequested { api, code: None, .. } = event {
+            if let tauri::RunEvent::ExitRequested {
+                api, code: None, ..
+            } = event
+            {
                 api.prevent_exit();
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
