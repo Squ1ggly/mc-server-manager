@@ -1,5 +1,14 @@
-//! Automatic Java runtime download: fetches the right Eclipse Temurin JRE
+//! Automatic Java runtime download: fetches the right Eclipse Temurin JDK
 //! from the Adoptium API and unpacks it into the app's managed Java folder.
+//!
+//! This deliberately downloads the full JDK, not the smaller JRE: Adoptium's
+//! `jre` image type is jlink-trimmed down to the modules its static analysis
+//! can see a JVM needs, which misses `jdk.crypto.ec` — it's only ever pulled
+//! in via a security-provider service lookup, not a normal `requires`. Forge
+//! and NeoForge's bootstrapper needs that module (for the EC crypto used to
+//! validate Mojang auth JWTs via nimbus-jose-jwt) and throws
+//! `java.lang.module.FindException: Module jdk.crypto.ec not found` on the
+//! trimmed JRE. The full JDK isn't jlink-reduced, so it always has it.
 
 use std::path::{Path, PathBuf};
 
@@ -48,7 +57,7 @@ struct AdoptiumPackage {
     checksum: String,
 }
 
-/// Downloads and unpacks a Temurin JRE with the given major version, then
+/// Downloads and unpacks a Temurin JDK with the given major version, then
 /// returns the freshly usable install.
 pub async fn install_temurin(
     client: &reqwest::Client,
@@ -79,7 +88,7 @@ async fn latest_package(
     required_major: u32,
 ) -> AppResult<AdoptiumPackage> {
     let url = format!(
-        "{ADOPTIUM_API_BASE}/{required_major}/hotspot?os={}&architecture={}&image_type=jre&vendor=eclipse",
+        "{ADOPTIUM_API_BASE}/{required_major}/hotspot?os={}&architecture={}&image_type=jdk&vendor=eclipse",
         adoptium_os_name(),
         adoptium_architecture(),
     );
