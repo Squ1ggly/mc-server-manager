@@ -278,7 +278,7 @@ pub fn new_server_config(request: &CreateServerRequest, dir: PathBuf) -> ServerC
 }
 
 /// Builds (or recovers) a config for an existing folder being imported into
-/// Blockparty. If the folder already has our settings YAML — e.g. it was
+/// ServerForge. If the folder already has our settings YAML — e.g. it was
 /// managed before and the app just lost track of it — that file wins and the
 /// supplied fields are ignored; otherwise a fresh config is written for it.
 pub fn config_for_import(

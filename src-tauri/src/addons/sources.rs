@@ -299,7 +299,7 @@ pub mod spigot {
     }
 
     /// Searches SpigotMC resources by name. Premium/externally-hosted
-    /// resources are filtered out since Blockparty can't download them
+    /// resources are filtered out since ServerForge can't download them
     /// directly.
     pub async fn search(
         client: &reqwest::Client,
@@ -454,7 +454,7 @@ pub mod curseforge {
     /// "Mods" section of the Minecraft catalog.
     const MODS_CLASS_ID: u32 = 6;
 
-    /// CurseForge's `ModLoaderType` enum values for the loaders Blockparty
+    /// CurseForge's `ModLoaderType` enum values for the loaders ServerForge
     /// can install mods for.
     fn mod_loader_type(loader_facet: &str) -> Option<u32> {
         match loader_facet {
@@ -776,7 +776,7 @@ pub async fn install(
 // --- Update checking --------------------------------------------------------
 
 /// Whether a newer version than the one on disk is available for one
-/// installed addon Blockparty knows the provenance of.
+/// installed addon ServerForge knows the provenance of.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddonUpdateStatus {
@@ -791,7 +791,7 @@ pub struct AddonUpdateStatus {
     pub has_update: bool,
 }
 
-/// Checks every addon Blockparty has an install record for against its
+/// Checks every addon ServerForge has an install record for against its
 /// marketplace's newest version. Addons dropped in by hand (no record) are
 /// skipped — there's no provenance to check them against.
 pub async fn check_for_updates(

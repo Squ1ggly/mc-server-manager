@@ -61,7 +61,7 @@ pub async fn install(
     .await
 }
 
-/// Checks every installed mod Blockparty has provenance for against its
+/// Checks every installed mod ServerForge has provenance for against its
 /// marketplace's newest version.
 pub async fn check_for_updates(
     client: &reqwest::Client,

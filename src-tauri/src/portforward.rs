@@ -14,7 +14,7 @@ use igd_next::aio::Gateway;
 use igd_next::{PortMappingProtocol, SearchOptions};
 
 /// Shown in the router's UPnP mapping table.
-const DESCRIPTION: &str = "Blockparty Minecraft server";
+const DESCRIPTION: &str = "ServerForge game server";
 /// Ask for an indefinite lease; fall back to a week if the router refuses one.
 const INDEFINITE_LEASE: u32 = 0;
 const FALLBACK_LEASE: u32 = 604_800;

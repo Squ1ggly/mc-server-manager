@@ -111,7 +111,7 @@ pub async fn create_server(
     Ok(config)
 }
 
-/// An existing server folder to add to Blockparty's known-servers list.
+/// An existing server folder to add to ServerForge's known-servers list.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportServerRequest {
@@ -123,8 +123,8 @@ pub struct ImportServerRequest {
 }
 
 /// Adds an existing server folder to the known-servers list — for a server
-/// created outside Blockparty, or one whose entry was lost (e.g. the database
-/// was reset). If the folder already carries Blockparty's own settings file,
+/// created outside ServerForge, or one whose entry was lost (e.g. the database
+/// was reset). If the folder already carries ServerForge's own settings file,
 /// that file's data wins over the supplied fields; nothing on disk is
 /// otherwise touched.
 #[tauri::command]
@@ -352,7 +352,7 @@ pub async fn detect_java(state: State<'_, AppState>) -> AppResult<Vec<JavaInstal
     Ok(installs)
 }
 
-/// Opens the folder holding Blockparty's log files in the OS file manager, so a
+/// Opens the folder holding ServerForge's log files in the OS file manager, so a
 /// user can grab them when reporting a problem.
 #[tauri::command]
 pub async fn open_logs_dir(app: AppHandle) -> AppResult<()> {
@@ -436,7 +436,7 @@ pub async fn remove_server_icon(
     Ok(())
 }
 
-/// Recovery hammer: kills every Java process Blockparty is responsible for
+/// Recovery hammer: kills every Java process ServerForge is responsible for
 /// (tracked or orphaned). Returns how many were terminated.
 #[tauri::command]
 pub async fn kill_all_java(state: State<'_, AppState>) -> AppResult<u32> {
@@ -450,7 +450,7 @@ pub async fn kill_all_java(state: State<'_, AppState>) -> AppResult<u32> {
     };
 
     let killed_count =
-        process::kill_all_blockparty_java(state.managed_java_dir(), server_dirs).await;
+        process::kill_all_serverforge_java(state.managed_java_dir(), server_dirs).await;
     Ok(killed_count)
 }
 
@@ -806,7 +806,7 @@ pub async fn open_port_forward(
         Err(portforward::PortForwardError::NoGateway) => Ok(ForwardResult::failure(
             "No UPnP router found. Check that UPnP is enabled on your router, and that \
              this PC isn't on a VPN or a guest network — either one hides the router \
-             from Blockparty. Otherwise you can forward the port manually; see the \
+             from ServerForge. Otherwise you can forward the port manually; see the \
              \"Playing over the internet\" docs.",
         )),
         Err(error) => Ok(ForwardResult::failure(format!(

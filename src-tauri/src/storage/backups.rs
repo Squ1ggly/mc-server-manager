@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn zipping_excludes_the_backups_folder() {
         let temp_root =
-            std::env::temp_dir().join(format!("blockparty-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("serverforge-test-{}", uuid::Uuid::new_v4()));
         let server_dir = temp_root.join("server");
         let backups_dir = server_dir.join("backups");
         std::fs::create_dir_all(server_dir.join("world")).expect("create world dir");
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn restoring_preserves_the_backups_folder() {
         let temp_root =
-            std::env::temp_dir().join(format!("blockparty-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("serverforge-test-{}", uuid::Uuid::new_v4()));
         let server_dir = temp_root.join("server");
         let backups_dir = server_dir.join("backups");
         std::fs::create_dir_all(server_dir.join("world")).expect("create world dir");

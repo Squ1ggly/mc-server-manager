@@ -50,9 +50,9 @@
   {:else if serversStore.servers.length === 0}
     <div class="welcome" in:fade={{ duration: 120 }}>
       <GrassBlock size={72} />
-      <h1>Welcome to Blockparty!</h1>
+      <h1>Welcome to ServerForge!</h1>
       <p class="lede">
-        Build a Minecraft server in a couple of clicks — Blockparty handles the software, the
+        Build a Minecraft server in a couple of clicks — ServerForge handles the software, the
         right Java, and the boring setup.
       </p>
       <div class="welcome-actions">

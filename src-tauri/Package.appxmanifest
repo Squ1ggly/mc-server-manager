@@ -11,7 +11,12 @@
   locally.
 
   Identity/Publisher values are fixed by Partner Center once the app is
-  reserved — do not change them without also updating the reservation.
+  reserved — do not change them without also updating the reservation. The
+  Name/Publisher below match the "ServerForge" reservation in Partner Center
+  (Store ID 9N5C22RXW3NJ). The previous reservation was rejected because a
+  product name may not contain another company's product title. Keep
+  third-party game names out of every name field here — compatibility may only
+  be stated in the Store listing description, never in the name.
   Version must be bumped (4 numeric parts) on every resubmission; keep it in
   step with the app version in tauri.conf.json / Cargo.toml (X.Y.Z -> X.Y.Z.0).
 -->
@@ -22,12 +27,12 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="Voidhamsterofficial.BlockpartyMinecraftServerManag"
+    Name="Voidhamsterofficial.ServerForge"
     Publisher="CN=36895946-F56A-4DAC-B627-D2FE8038FDEF"
-    Version="1.7.5.0" />
+    Version="1.7.6.0" />
 
   <Properties>
-    <DisplayName>Blockparty: Minecraft Server Manager</DisplayName>
+    <DisplayName>ServerForge</DisplayName>
     <PublisherDisplayName>Voidhamsterofficial</PublisherDisplayName>
     <Logo>icons\StoreLogo.png</Logo>
   </Properties>
@@ -41,10 +46,10 @@
   </Resources>
 
   <Applications>
-    <Application Id="App" Executable="mc-server-manager.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="App" Executable="ServerForge.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="Blockparty: Minecraft Server Manager"
-        Description="A cute, fast, cross-platform Minecraft server manager"
+        DisplayName="ServerForge"
+        Description="A cute, fast, cross-platform game server manager"
         BackgroundColor="transparent"
         Square150x150Logo="icons\Square150x150Logo.png"
         Square44x44Logo="icons\Square44x44Logo.png">

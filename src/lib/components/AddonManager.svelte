@@ -181,7 +181,7 @@
 
   const blockedReason = $derived(sourceBlocked?.(source) ?? null);
 
-  /** "source:projectId" keys for every installed addon Blockparty has
+  /** "source:projectId" keys for every installed addon ServerForge has
    *  provenance for, so already-installed search results can be recognized. */
   const installedKeys = $derived(
     new Set([...updates.values()].map((status) => `${status.source}:${status.projectId}`)),

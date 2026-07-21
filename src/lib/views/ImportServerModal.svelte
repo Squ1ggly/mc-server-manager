@@ -107,7 +107,7 @@
 <Modal {open} title="Import an existing server" onclose={close}>
   <form class="import-form" onsubmit={submit}>
     <p class="hint">
-      Point Blockparty at a server folder you already have — one it lost track of, or one
+      Point ServerForge at a server folder you already have — one it lost track of, or one
       you set up another way. Its files stay exactly where they are.
     </p>
 
@@ -151,7 +151,7 @@
     </label>
 
     <p class="hint">
-      If the folder already has Blockparty's own settings file, its saved software,
+      If the folder already has ServerForge's own settings file, its saved software,
       version, and memory are used instead of what's picked here.
     </p>
 

@@ -55,7 +55,7 @@
           { text: "Create your first server from the " },
           { text: "dashboard", link: { kind: "view", view: "home" } },
           {
-            text: " with the + New server button. Pick your software (Vanilla, Paper, Fabric, a proxy, …), then a version, port, and memory. Blockparty downloads everything — including ",
+            text: " with the + New server button. Pick your software (Vanilla, Paper, Fabric, a proxy, …), then a version, port, and memory. ServerForge downloads everything — including ",
           },
           { text: "the right Java", link: { kind: "topic", topicId: "java" } },
           { text: " — and you're ready to press Start." },
@@ -98,7 +98,7 @@
       paragraphs: [
         [
           {
-            text: "Every Minecraft version needs a matching Java. Blockparty detects the Javas installed on your machine and picks the right one; if none fits, it downloads a Temurin JRE by itself — you'll see a small progress pill while that happens.",
+            text: "Every Minecraft version needs a matching Java. ServerForge detects the Javas installed on your machine and picks the right one; if none fits, it downloads a Temurin JRE by itself — you'll see a small progress pill while that happens.",
           },
         ],
         [
@@ -230,7 +230,7 @@
         ],
         [
           {
-            text: "The easy way: on a server's Dashboard, click \"Open to internet\". Blockparty asks your router to forward the port for you over UPnP and, when it works, shows a public address to share. Stopping the server closes the port automatically, or click \"Close\" to remove it yourself — an open port is reachable by anyone while it's up. Mappings outlive the app, so a server left open still shows as forwarded next time you launch Blockparty.",
+            text: "The easy way: on a server's Dashboard, click \"Open to internet\". ServerForge asks your router to forward the port for you over UPnP and, when it works, shows a public address to share. Stopping the server closes the port automatically, or click \"Close\" to remove it yourself — an open port is reachable by anyone while it's up. Mappings outlive the app, so a server left open still shows as forwarded next time you launch ServerForge.",
           },
         ],
         [
@@ -245,7 +245,7 @@
         ],
         [
           {
-            text: "Second — and this one can't be fixed from Blockparty — some internet providers put you behind shared \"CGNAT\" addressing, so no port forwarding can reach you. Blockparty tells you when it detects this. Your options are to ask your ISP for a public (static) IP, or use a tunnelling service such as playit.gg that works without forwarding.",
+            text: "Second — and this one can't be fixed from ServerForge — some internet providers put you behind shared \"CGNAT\" addressing, so no port forwarding can reach you. ServerForge tells you when it detects this. Your options are to ask your ISP for a public (static) IP, or use a tunnelling service such as playit.gg that works without forwarding.",
           },
         ],
         [
@@ -291,7 +291,7 @@
         ],
         [
           {
-            text: "Tasks run while Blockparty is open. A disabled task keeps its schedule but skips firing.",
+            text: "Tasks run while ServerForge is open. A disabled task keeps its schedule but skips firing.",
           },
         ],
       ],
@@ -304,14 +304,14 @@
       paragraphs: [
         [
           {
-            text: "\"The process cannot access the file…\" means an old server process is still holding the world. Blockparty reclaims these automatically on start, and ",
+            text: "\"The process cannot access the file…\" means an old server process is still holding the world. ServerForge reclaims these automatically on start, and ",
           },
           {
             text: "Settings → Recovery",
             link: { kind: "view", view: "settings" },
           },
           {
-            text: " has a kill-switch for every server process Blockparty is responsible for — your game and launcher are never touched.",
+            text: " has a kill-switch for every server process ServerForge is responsible for — your game and launcher are never touched.",
           },
         ],
         [

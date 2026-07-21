@@ -154,7 +154,7 @@ impl AppState {
 fn build_http_client() -> AppResult<reqwest::Client> {
     let client = reqwest::Client::builder()
         .user_agent(concat!(
-            "Blockparty/",
+            "ServerForge/",
             env!("CARGO_PKG_VERSION"),
             " (github.com/Squ1ggly/mc-server-manager)"
         ))

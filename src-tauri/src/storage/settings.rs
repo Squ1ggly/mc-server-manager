@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 /// Name of the folder created inside the chosen base location.
-const DEFAULT_SERVERS_FOLDER_NAME: &str = "Blockparty Servers";
+const DEFAULT_SERVERS_FOLDER_NAME: &str = "ServerForge Servers";
 
 /// Somewhere the user can actually find their worlds: the Documents folder,
 /// falling back to the home directory, then app data as a last resort.

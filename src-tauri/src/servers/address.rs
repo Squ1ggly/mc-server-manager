@@ -122,7 +122,7 @@ mod tests {
 
     /// Writes `contents` to `name` in a fresh temp dir and returns the dir.
     fn dir_with(name: &str, contents: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("blockparty-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("serverforge-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         std::fs::write(dir.join(name), contents).expect("write config");
         dir

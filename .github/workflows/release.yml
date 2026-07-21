@@ -59,17 +59,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Blockparty ${{ github.ref_name }}"
+          releaseName: "ServerForge ${{ github.ref_name }}"
           releaseBody: |
             Download the installer for your platform below.
 
             **Windows** — run the `.exe` (or `.msi`). SmartScreen may warn since
             the build is unsigned; choose "More info → Run anyway".
 
-            **macOS** — open the `.dmg` and drag Blockparty to Applications.
+            **macOS** — open the `.dmg` and drag ServerForge to Applications.
             The build is unsigned, so macOS says it's "damaged" the first time.
             Fix it once with:
-            `xattr -dr com.apple.quarantine /Applications/Blockparty.app`
+            `xattr -dr com.apple.quarantine /Applications/ServerForge.app`
             (or right-click the app → Open).
 
             **Linux** — install the `.deb`/`.rpm`, or `chmod +x` the `.AppImage`

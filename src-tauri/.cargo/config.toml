@@ -1,0 +1,16 @@
+# Statically link the MSVC C runtime on Windows.
+#
+# Rust's MSVC targets dynamically link vcruntime140.dll et al by default, which
+# makes the Microsoft Visual C++ Redistributable an external dependency of the
+# shipped binary. Store certification flagged that as "undisclosed software":
+# a product may only rely on non-integrated software if it detects the missing
+# dependency and tells the user about it.
+#
+# Linking the CRT statically removes the dependency instead of disclosing it,
+# so the MSIX is genuinely self-contained and runs on a clean Windows install.
+# Costs a modest increase in binary size.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

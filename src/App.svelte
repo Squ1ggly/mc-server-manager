@@ -333,7 +333,7 @@
       title="All servers"
     >
       <span class="mark"><GrassBlock size={22} /></span>
-      <span class="name">Blockparty</span>
+      <span class="name">ServerForge</span>
     </button>
 
     <nav class="server-nav">

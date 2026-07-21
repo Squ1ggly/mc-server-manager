@@ -1,4 +1,4 @@
-# 🎈 Blockparty
+# 🎈 ServerForge
 
 A cute, fast, cross-platform **Minecraft server manager** — create, run, and manage
 Minecraft servers from a friendly desktop app instead of a terminal window.
@@ -56,12 +56,12 @@ Grab the installer for your platform from the
 (built automatically by CI when a version tag is pushed):
 
 - **Windows**: run the `.exe` (NSIS) or `.msi` installer.
-- **macOS**: open the `.dmg` and drag Blockparty to Applications. Builds are
+- **macOS**: open the `.dmg` and drag ServerForge to Applications. Builds are
   unsigned, so the first launch needs right-click → Open (or
-  `xattr -dr com.apple.quarantine /Applications/blockparty.app`).
-- **Linux**: either install the `.deb` (`sudo apt install ./blockparty_*.deb`)
+  `xattr -dr com.apple.quarantine /Applications/serverforge.app`).
+- **Linux**: either install the `.deb` (`sudo apt install ./serverforge_*.deb`)
   or `.rpm`, or use the portable `.AppImage`
-  (`chmod +x Blockparty_*.AppImage && ./Blockparty_*.AppImage`).
+  (`chmod +x ServerForge_*.AppImage && ./ServerForge_*.AppImage`).
   The deb/rpm pull in the WebKitGTK runtime automatically; the AppImage
   bundles everything.
 
@@ -117,7 +117,7 @@ deb/rpm/AppImage — which is why the release workflow runs on all three.
 └── *.config.*      root-level tooling configs (Vite, TypeScript, Svelte)
 ```
 
-Each server lives in its own folder (`Documents/Blockparty Servers` by default,
+Each server lives in its own folder (`Documents/ServerForge Servers` by default,
 configurable) with a `blockparty-server.yaml` holding its settings. Global
 settings sit in a `blockparty.yaml` beside the binary — nothing in the registry.
 Downloaded Java runtimes live in the per-user app-data directory.
@@ -136,11 +136,11 @@ Downloaded Java runtimes live in the per-user app-data directory.
   Minecraft-inspired pixel font used for headings and the console (SIL OFL 1.1,
   contains no Mojang assets; license bundled in `src/assets/fonts/`).
 - Player avatars rendered via [mc-heads.net](https://mc-heads.net).
-- Blockparty contains no Minecraft game assets and is not affiliated with,
+- ServerForge contains no Minecraft game assets and is not affiliated with,
   endorsed by, or supported by Mojang or Microsoft.
 
 ## 📄 License & EULA
 
-Blockparty downloads the official Minecraft server software from Mojang. You
+ServerForge downloads the official Minecraft server software from Mojang. You
 must accept the [Minecraft EULA](https://aka.ms/MinecraftEULA) for each server
 you create; the app records your acceptance in the server's `eula.txt`.

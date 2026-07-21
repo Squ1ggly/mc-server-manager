@@ -110,7 +110,7 @@
     try {
       const picked = await openFolderDialog({
         directory: true,
-        title: "Choose where Blockparty stores its database",
+        title: "Choose where ServerForge stores its database",
       });
       if (typeof picked !== "string") {
         return;
@@ -156,7 +156,7 @@
     try {
       const killedCount = await api.killAllJava();
       if (killedCount === 0) {
-        toastsStore.show("No Blockparty server processes found — all clear");
+        toastsStore.show("No ServerForge server processes found — all clear");
       } else {
         toastsStore.success(
           `Terminated ${killedCount} server process${killedCount === 1 ? "" : "es"}`,
@@ -210,7 +210,7 @@
       </span>
     </div>
     <p class="hint">
-      Blockparty's own database — settings, the list of known servers, scheduled tasks,
+      ServerForge's own database — settings, the list of known servers, scheduled tasks,
       and player history. Changing this moves the database file to the new location;
       resetting moves it back to the default. Each server's own files never move.
     </p>
@@ -282,7 +282,7 @@
       {/if}
     </div>
     <p class="hint">
-      Force-kills every Java process Blockparty is responsible for — running servers
+      Force-kills every Java process ServerForge is responsible for — running servers
       and orphans left behind by a crash. Use this if a world says it's locked by
       another process. Your Minecraft game and launcher are not touched.
     </p>
@@ -291,7 +291,7 @@
   <div class="card">
     <h3><ScrollText size={16} /> About & terms</h3>
     <p class="hint">
-      Blockparty {version} — a free, open-source Minecraft server manager. It contains
+      ServerForge {version} — a free, open-source Minecraft server manager. It contains
       no Mojang game assets and is not affiliated with, endorsed by, or associated with
       Mojang or Microsoft.
     </p>

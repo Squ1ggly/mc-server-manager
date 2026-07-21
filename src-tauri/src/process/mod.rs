@@ -270,10 +270,10 @@ fn remove_pid_file(server_dir: &Path) {
 }
 
 /// Emergency recovery: force-kills every Java process that belongs to
-/// Blockparty — running from our managed Java folder, or working inside one
+/// ServerForge — running from our managed Java folder, or working inside one
 /// of our server folders. Unrelated Javas (game launchers, IDEs) survive.
 /// Returns how many processes were killed.
-pub async fn kill_all_blockparty_java(
+pub async fn kill_all_serverforge_java(
     managed_java_dir: std::path::PathBuf,
     server_dirs: Vec<std::path::PathBuf>,
 ) -> u32 {
@@ -282,7 +282,7 @@ pub async fn kill_all_blockparty_java(
 
         let mut killed_count = 0;
         for process in system.processes().values() {
-            if !is_blockparty_java(process, &managed_java_dir, &server_dirs) {
+            if !is_serverforge_java(process, &managed_java_dir, &server_dirs) {
                 continue;
             }
             if process.kill() {
@@ -308,7 +308,7 @@ fn process_name_is_java(process: &sysinfo::Process) -> bool {
     name.contains("java")
 }
 
-fn is_blockparty_java(
+fn is_serverforge_java(
     process: &sysinfo::Process,
     managed_java_dir: &Path,
     server_dirs: &[std::path::PathBuf],
