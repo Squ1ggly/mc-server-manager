@@ -28,15 +28,15 @@ Built with **Rust** (Tauri v2 backend) and **Svelte 5** (TypeScript UI).
 
 <img width="600" alt="Main Dashboard" src="https://github.com/user-attachments/assets/60f984f8-c0e1-4aea-b406-7242dbf44bba" />
 
-**Live Console**
+**Live Stats**
 
 <img width="600" alt="Live Console" src="https://github.com/user-attachments/assets/a9ca8f99-6d5d-4030-a8ef-379933cdcbd3" />
 
-**Player Management**
+**Server Overview Dashboard**
 
 <img width="600" alt="Player Management" src="https://github.com/user-attachments/assets/c1f43de3-b7a1-4781-9f34-494f3aafba3f" />
 
-**Plugin Browser & Settings**
+**Server Settings Tab**
 
 <img width="600" alt="Plugin Browser" src="https://github.com/user-attachments/assets/eaefdfbf-32a8-4c0a-887e-48718c17ecf6" />
 
