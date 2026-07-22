@@ -896,8 +896,10 @@
     background: var(--surface-2);
     border-radius: var(--radius-md);
     padding: 0.6em 0.9em;
-    overflow-wrap: break-word;
-    word-break: break-all;
+    /* Scroll rather than wrap: breaking a path mid-word strands single
+       characters on their own line. */
+    white-space: nowrap;
+    overflow-x: auto;
   }
 
   .advanced-toggle {

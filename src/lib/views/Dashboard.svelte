@@ -5,7 +5,7 @@
   import type { ServerConfig } from "../ipc/api";
   import ServerCard from "../components/ServerCard.svelte";
   import Button from "../components/Button.svelte";
-  import GrassBlock from "../components/GrassBlock.svelte";
+  import AppMark from "../components/AppMark.svelte";
   import { FEATURE_COLOR } from "../util/features";
 
   interface Props {
@@ -35,7 +35,7 @@
 <section class="dashboard">
   {#if !serversStore.loaded}
     <div class="empty" in:fade={{ duration: 120 }}>
-      <GrassBlock size={72} />
+      <AppMark size={72} />
       <p>Loading your servers…</p>
     </div>
   {:else if serversStore.loadError}
@@ -49,7 +49,7 @@
     </div>
   {:else if serversStore.servers.length === 0}
     <div class="welcome" in:fade={{ duration: 120 }}>
-      <GrassBlock size={72} />
+      <AppMark size={72} />
       <h1>Welcome to ServerForge!</h1>
       <p class="lede">
         Build a Minecraft server in a couple of clicks — ServerForge handles the software, the

@@ -32,7 +32,7 @@
   import { confirmStore } from "./lib/stores/confirm.svelte";
   import { portForwardStore } from "./lib/stores/portForward.svelte";
   import StatusBlob from "./lib/components/StatusBlob.svelte";
-  import GrassBlock from "./lib/components/GrassBlock.svelte";
+  import AppMark from "./lib/components/AppMark.svelte";
   import { serversStore } from "./lib/stores/servers.svelte";
   import { statsStore } from "./lib/stores/stats.svelte";
   import { toastsStore } from "./lib/stores/toasts.svelte";
@@ -347,7 +347,7 @@
       onclick={() => navigate({ view: "home" })}
       title="All servers"
     >
-      <span class="mark"><GrassBlock size={22} /></span>
+      <span class="mark"><AppMark size={22} /></span>
       <span class="name">ServerForge</span>
     </button>
 

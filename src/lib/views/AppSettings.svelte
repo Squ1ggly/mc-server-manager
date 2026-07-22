@@ -10,13 +10,24 @@
     Skull,
     ScrollText,
     KeyRound,
+    Palette,
+    Sun,
+    Moon,
+    Monitor,
   } from "@lucide/svelte";
+  import { themeStore, type ThemePreference } from "../stores/theme.svelte";
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { getVersion } from "@tauri-apps/api/app";
   import { api, type AppSettings, type JavaInstall, type StorageLocation } from "../ipc/api";
   import { toastsStore } from "../stores/toasts.svelte";
   import Button from "../components/Button.svelte";
+
+  const THEME_OPTIONS: { preference: ThemePreference; label: string; icon: typeof Sun }[] = [
+    { preference: "light", label: "Light", icon: Sun },
+    { preference: "dark", label: "Dark", icon: Moon },
+    { preference: "system", label: "System", icon: Monitor },
+  ];
 
   let version = $state("");
   getVersion()
@@ -172,6 +183,31 @@
 
 <section class="settings" in:fade={{ duration: 120 }}>
   <h1><Settings size={22} /> Settings</h1>
+
+  <div class="card">
+    <div class="card-head">
+      <h3><Palette size={16} /> Appearance</h3>
+      <div class="theme-switch" role="group" aria-label="Colour theme">
+        {#each THEME_OPTIONS as option (option.preference)}
+          {@const OptionIcon = option.icon}
+          {@const isSelected = themeStore.preference === option.preference}
+          <button
+            class="theme-option"
+            class:selected={isSelected}
+            aria-pressed={isSelected}
+            onclick={() => themeStore.select(option.preference)}
+          >
+            <OptionIcon size={14} />
+            {option.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+    <p class="hint">
+      System follows your Windows, macOS, or Linux setting and changes with it. Light
+      and dark stay put no matter what the OS does.
+    </p>
+  </div>
 
   <div class="card">
     <div class="card-head">
@@ -350,6 +386,45 @@
     gap: 0.75rem;
   }
 
+  /* Segmented control: one bevelled block, split into three. */
+  .theme-switch {
+    display: flex;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .theme-option {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.7rem;
+    border: 0;
+    border-left: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
+  }
+
+  .theme-option:first-child {
+    border-left: 0;
+  }
+
+  .theme-option:hover {
+    color: var(--text);
+  }
+
+  .theme-option.selected {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
   h3 {
     margin: 0 0 0.4rem;
     font-size: 1rem;
@@ -409,8 +484,10 @@
     background: var(--surface-2);
     border-radius: var(--radius-sm);
     padding: 0.45em 0.7em;
-    overflow-wrap: break-word;
-    word-break: break-all;
+    /* Paths scroll rather than wrap: breaking mid-word left orphans like the
+       "e" of java.exe stranded on its own line. */
+    white-space: nowrap;
+    overflow-x: auto;
     user-select: text;
   }
 

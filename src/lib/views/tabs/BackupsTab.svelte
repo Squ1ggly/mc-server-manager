@@ -184,8 +184,10 @@
     background: var(--surface-2);
     border-radius: var(--radius-sm);
     padding: 0.4em 0.7em;
-    overflow-wrap: break-word;
-    word-break: break-all;
+    /* Scroll rather than wrap: breaking a path mid-word strands single
+       characters on their own line. */
+    white-space: nowrap;
+    overflow-x: auto;
     user-select: text;
   }
 

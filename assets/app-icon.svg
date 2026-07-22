@@ -1,0 +1,35 @@
+<!--
+  ServerForge app mark — original pixel art, drawn on a 16x16 grid.
+  A little server tower with status LEDs. Deliberately shares no imagery
+  with any game: Microsoft Store policy 10.1.1.11 forbids product tiles
+  containing artwork from products we don't publish.
+
+  Kept as the source drawing the icons in src-tauri/icons were rendered
+  from, and as a record that the mark is ours.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <!-- Slate backing tile -->
+  <rect x="0" y="0" width="16" height="16" rx="2.5" fill="#23262e" />
+
+  <!-- Tower chassis -->
+  <rect x="3" y="2" width="10" height="12" fill="#454c5c" />
+  <rect x="3" y="2" width="10" height="1" fill="#59627a" />
+  <rect x="3" y="2" width="1" height="12" fill="#525a6d" />
+  <rect x="12" y="2" width="1" height="12" fill="#3a4050" />
+
+  <!-- Drive bays: dark slot, one green status LED, a vent grille -->
+  <rect x="4" y="3" width="8" height="2" fill="#2b303b" />
+  <rect x="5" y="3" width="1" height="1" fill="#7ed957" />
+  <rect x="7" y="3" width="4" height="1" fill="#59627a" />
+
+  <rect x="4" y="6" width="8" height="2" fill="#2b303b" />
+  <rect x="5" y="6" width="1" height="1" fill="#7ed957" />
+  <rect x="7" y="6" width="4" height="1" fill="#59627a" />
+
+  <rect x="4" y="9" width="8" height="2" fill="#2b303b" />
+  <rect x="5" y="9" width="1" height="1" fill="#7ed957" />
+  <rect x="7" y="9" width="4" height="1" fill="#59627a" />
+
+  <!-- Power bar along the base -->
+  <rect x="4" y="12" width="8" height="1" fill="#5cbf3f" />
+</svg>

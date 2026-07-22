@@ -86,56 +86,57 @@
   --duration-fast: 120ms;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Dark mode: charcoal panels in the style of the game's modern UI. */
-    --bg: #141518;
-    --bg-gradient: radial-gradient(1000px 700px at 50% -20%, rgba(255, 255, 255, 0.05), transparent 70%);
-    --surface: #26272b;
-    --surface-2: #313237;
-    --text: #ececec;
-    --muted: #a5a5ad;
-    --border: #3b3c42;
+/* Dark tokens are keyed off an attribute, not `prefers-color-scheme`, so the
+   Settings toggle can override the OS. The attribute is always set before the
+   app mounts — see stores/theme.svelte.ts. */
+:root[data-theme="dark"] {
+  /* Dark mode: charcoal panels in the style of the game's modern UI. */
+  --bg: #141518;
+  --bg-gradient: radial-gradient(1000px 700px at 50% -20%, rgba(255, 255, 255, 0.05), transparent 70%);
+  --surface: #26272b;
+  --surface-2: #313237;
+  --text: #ececec;
+  --muted: #a5a5ad;
+  --border: #3b3c42;
 
-    --accent: #5ebd3e;
-    --accent-strong: #6fd14b;
-    --accent-soft: #23391b;
-    --on-accent: #0c1607;
+  --accent: #5ebd3e;
+  --accent-strong: #6fd14b;
+  --accent-soft: #23391b;
+  --on-accent: #0c1607;
 
-    --mint: #62c94a;
-    --mint-soft: #1d3315;
-    --peach: #ffaa00;
-    --peach-soft: #3c2f10;
-    --lavender: #a9a9b3;
-    --lavender-soft: #33343a;
-    --strawberry: #ff5555;
-    --strawberry-soft: #401c1c;
+  --mint: #62c94a;
+  --mint-soft: #1d3315;
+  --peach: #ffaa00;
+  --peach-soft: #3c2f10;
+  --lavender: #a9a9b3;
+  --lavender-soft: #33343a;
+  --strawberry: #ff5555;
+  --strawberry-soft: #401c1c;
 
-    --chart-cpu: #6fd14b;
-    --chart-mem: #4fc3f7;
+  --chart-cpu: #6fd14b;
+  --chart-mem: #4fc3f7;
 
-    /* Brighter feature accents for the dark charcoal surface. */
-    --feat-dashboard: #62c94a;
-    --feat-console: #9aa0ff;
-    --feat-players: #4fc3f7;
-    --feat-plugins: #c79cf0;
-    --feat-mods: #ffa94d;
-    --feat-files: #ffcf4d;
-    --feat-settings: #a9a9b3;
-    --feat-backups: #4fd6c0;
-    --feat-scheduler: #ff92c2;
+  /* Brighter feature accents for the dark charcoal surface. */
+  --feat-dashboard: #62c94a;
+  --feat-console: #9aa0ff;
+  --feat-players: #4fc3f7;
+  --feat-plugins: #c79cf0;
+  --feat-mods: #ffa94d;
+  --feat-files: #ffcf4d;
+  --feat-settings: #a9a9b3;
+  --feat-backups: #4fd6c0;
+  --feat-scheduler: #ff92c2;
 
-    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23a5a5ad' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23a5a5ad' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
-    --shadow-soft:
-      inset 0 2px 0 rgba(255, 255, 255, 0.05),
-      inset -2px -2px 0 rgba(0, 0, 0, 0.25),
-      0 2px 0 rgba(0, 0, 0, 0.4);
-    --shadow-pop:
-      inset 0 2px 0 rgba(255, 255, 255, 0.05),
-      inset -2px -2px 0 rgba(0, 0, 0, 0.25),
-      0 3px 0 rgba(0, 0, 0, 0.55);
-  }
+  --shadow-soft:
+    inset 0 2px 0 rgba(255, 255, 255, 0.05),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.25),
+    0 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-pop:
+    inset 0 2px 0 rgba(255, 255, 255, 0.05),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.25),
+    0 3px 0 rgba(0, 0, 0, 0.55);
 }
 
 * {
