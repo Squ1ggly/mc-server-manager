@@ -135,8 +135,12 @@ pub async fn start(
 
     reclaim_orphaned_server(app, &config.id, server_dir).await;
 
-    let (child, stdin, stdout, stderr) = match spawn_with_pipes(config, server_dir, java_executable)
-    {
+    let SpawnedChild {
+        child,
+        stdin,
+        stdout,
+        stderr,
+    } = match spawn_with_pipes(config, server_dir, java_executable) {
         Ok(parts) => parts,
         Err(error) => {
             // Roll back the reservation so the server isn't stuck "starting".
@@ -202,21 +206,10 @@ async fn reclaim_orphaned_server(app: &AppHandle, server_id: &str, server_dir: &
     wait_for_process_exit(&mut system, pid).await;
     remove_pid_file(server_dir);
 
-    let notice = ConsoleLine {
-        spans: vec![ConsoleSpan {
-            text: format!(
-                "Recovered: terminated an orphaned server process (pid {orphan_pid}) that was still holding this world."
-            ),
-            color: Some("#ffaa00".to_string()),
-            bold: false,
-        }],
-        level: LogLevel::Warn,
-    };
-    let batch = ConsoleBatchEvent {
-        server_id: server_id.to_string(),
-        lines: vec![notice],
-    };
-    emit_event(app, events::SERVER_CONSOLE, batch);
+    let notice = format!(
+        "Recovered: terminated an orphaned server process (pid {orphan_pid}) that was still holding this world."
+    );
+    announce(app, server_id, notice, LogLevel::Warn);
 }
 
 /// Reclaims every server orphaned by a previous crash or force-kill, at app
@@ -456,20 +449,33 @@ fn spawn_java_process(
     Ok(child)
 }
 
+/// A freshly spawned child together with the three pipes taken from it.
+struct SpawnedChild {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: ChildStdout,
+    stderr: ChildStderr,
+}
+
 /// Spawns the child and takes ownership of its three pipes in one step, so a
 /// failure at any point leaves no half-started child behind (`kill_on_drop`
 /// reaps it).
-#[allow(clippy::type_complexity)]
 fn spawn_with_pipes(
     config: &ServerConfig,
     server_dir: &Path,
     java_executable: &Path,
-) -> AppResult<(Child, ChildStdin, ChildStdout, ChildStderr)> {
+) -> AppResult<SpawnedChild> {
     let mut child = spawn_java_process(config, server_dir, java_executable)?;
     let stdin = take_pipe(child.stdin.take())?;
     let stdout = take_pipe(child.stdout.take())?;
     let stderr = take_pipe(child.stderr.take())?;
-    Ok((child, stdin, stdout, stderr))
+    let spawned = SpawnedChild {
+        child,
+        stdin,
+        stdout,
+        stderr,
+    };
+    Ok(spawned)
 }
 
 /// How a loader's installed files are launched.

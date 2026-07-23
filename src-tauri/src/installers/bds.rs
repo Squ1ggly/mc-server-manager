@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 use crate::installers::vanilla::McVersion;
-use crate::installers::{download_file, ExpectedChecksum, ProgressCallback};
+use crate::installers::{download_file, fetch_json, ExpectedChecksum, ProgressCallback};
 
 /// Mojang's official list of current downloads. This replaced scraping the
 /// download page, which stopped carrying the link in its HTML.
@@ -64,13 +64,7 @@ fn download_type() -> AppResult<&'static str> {
 
 async fn find_download_url(client: &reqwest::Client) -> AppResult<String> {
     let wanted = download_type()?;
-    let listing: DownloadLinks = client
-        .get(BDS_LINKS_API)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let listing: DownloadLinks = fetch_json(client, BDS_LINKS_API).await?;
 
     listing
         .result
@@ -86,7 +80,10 @@ async fn find_download_url(client: &reqwest::Client) -> AppResult<String> {
 }
 
 fn version_from_url(url: &str) -> Option<String> {
-    let after_prefix = url.rsplit("bedrock-server-").next()?;
+    // rsplit_once returns None when the marker is absent, so a URL that doesn't
+    // follow the "bedrock-server-<version>.zip" shape yields None rather than
+    // the whole URL masquerading as a version.
+    let (_, after_prefix) = url.rsplit_once("bedrock-server-")?;
     let version = after_prefix.strip_suffix(".zip")?;
     Some(version.to_string())
 }

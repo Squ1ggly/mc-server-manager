@@ -68,9 +68,17 @@
   const hasUnsavedEdits = $derived(openFile !== null && fileContents !== savedContents);
 
   $effect(() => {
-    // Publish the dirty state so navigating away (which destroys this tab)
-    // can ask first, and always withdraw it on teardown.
-    unsavedEditsStore.set(hasUnsavedEdits ? openFile : null);
+    // Publish the dirty state so navigating away (which destroys this tab) can
+    // offer to save first, and always withdraw it on teardown.
+    if (!hasUnsavedEdits || openFile === null) {
+      unsavedEditsStore.clear();
+      return;
+    }
+    const fileName = openFile;
+    unsavedEditsStore.register({
+      description: `the file ${fileName}`,
+      save: saveFile,
+    });
     return () => unsavedEditsStore.clear();
   });
 
@@ -101,13 +109,35 @@
     }
   }
 
+  // The id the editor is currently showing files for. Non-reactive on purpose:
+  // it gates the effect below without becoming one of its dependencies.
+  let loadedServerId: string | null = null;
+
   $effect(() => {
-    // Reload when the server changes.
-    void server.id;
+    const nextServerId = server.id;
+    // Only react to a genuine server change. A background servers refresh
+    // hands us a new prop object with the same id; resetting on that would
+    // silently close the editor and throw away unsaved edits.
+    if (nextServerId === loadedServerId) {
+      return;
+    }
+    void switchToServer(nextServerId);
+  });
+
+  /** Loads the newly selected server's root. Server switches normally pass
+   *  through App's navigate() → confirmLeave (which clears the record on
+   *  discard), so this asks only if a switch somehow arrived with unsaved
+   *  edits still recorded — never throwing them away without a prompt. */
+  async function switchToServer(nextServerId: string) {
+    const mayLeave = await unsavedEditsStore.confirmLeave();
+    if (!mayLeave) {
+      return;
+    }
+    loadedServerId = nextServerId;
     currentPath = "";
     openFile = null;
-    loadDir("");
-  });
+    await loadDir("");
+  }
 
   $effect(() =>
     // Drops are ignored while the editor is open — the file list, and so the
@@ -203,17 +233,19 @@
     openFile = null;
   }
 
-  async function saveFile() {
+  async function saveFile(): Promise<boolean> {
     if (openFile === null) {
-      return;
+      return true;
     }
     savingFile = true;
     try {
       await api.writeServerFile(server.id, openFile, fileContents);
       savedContents = fileContents;
       toastsStore.success("File saved");
+      return true;
     } catch (error) {
       toastsStore.error(String(error));
+      return false;
     } finally {
       savingFile = false;
     }

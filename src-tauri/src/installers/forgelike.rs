@@ -8,7 +8,9 @@ use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 use crate::installers::vanilla::McVersion;
-use crate::installers::{download_file, fetch_maven_checksum, run_java_tool, ProgressCallback};
+use crate::installers::{
+    download_file, fetch_json, fetch_maven_checksum, run_java_tool, ProgressCallback,
+};
 use crate::servers::Loader;
 
 const FORGE_PROMOTIONS_URL: &str =
@@ -97,13 +99,7 @@ pub async fn install(
 }
 
 async fn forge_promotions(client: &reqwest::Client) -> AppResult<ForgePromotions> {
-    let promotions = client
-        .get(FORGE_PROMOTIONS_URL)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let promotions = fetch_json(client, FORGE_PROMOTIONS_URL).await?;
     Ok(promotions)
 }
 
@@ -137,13 +133,7 @@ async fn forge_installer_url(client: &reqwest::Client, mc_version: &str) -> AppR
 }
 
 async fn neoforge_all_versions(client: &reqwest::Client) -> AppResult<Vec<String>> {
-    let listing: NeoForgeVersions = client
-        .get(NEOFORGE_VERSIONS_URL)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let listing: NeoForgeVersions = fetch_json(client, NEOFORGE_VERSIONS_URL).await?;
     Ok(listing.versions)
 }
 

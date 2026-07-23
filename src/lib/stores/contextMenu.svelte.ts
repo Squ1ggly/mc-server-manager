@@ -61,8 +61,16 @@ class ContextMenuStore {
     const height = estimateHeight(entries);
     this.entries = entries;
     this.bottom = null;
-    this.x = Math.min(event.clientX, window.innerWidth - MENU_WIDTH - VIEWPORT_MARGIN);
-    this.y = Math.min(event.clientY, window.innerHeight - height - VIEWPORT_MARGIN);
+    // Clamp both edges: Math.min keeps the menu off the right/bottom, Math.max
+    // stops a small window from pushing it off the left/top.
+    this.x = Math.max(
+      VIEWPORT_MARGIN,
+      Math.min(event.clientX, window.innerWidth - MENU_WIDTH - VIEWPORT_MARGIN),
+    );
+    this.y = Math.max(
+      VIEWPORT_MARGIN,
+      Math.min(event.clientY, window.innerHeight - height - VIEWPORT_MARGIN),
+    );
     this.open = true;
   }
 

@@ -2,7 +2,12 @@
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
   import { api, type Loader } from "../ipc/api";
   import { toastsStore } from "../stores/toasts.svelte";
-  import { MEMORY_MAX_MB, MEMORY_MIN_MB, MEMORY_STEP_MB } from "../util/constants";
+  import {
+    MEMORY_DEFAULT_MB,
+    MEMORY_MAX_MB,
+    MEMORY_MIN_MB,
+    MEMORY_STEP_MB,
+  } from "../util/constants";
   import Modal from "../components/Modal.svelte";
   import Button from "../components/Button.svelte";
 
@@ -35,7 +40,7 @@
   let name = $state("");
   let loader = $state<Loader>("vanilla");
   let mcVersion = $state("");
-  let memoryMb = $state(2048);
+  let memoryMb = $state(MEMORY_DEFAULT_MB);
   let importing = $state(false);
 
   const canSubmit = $derived(dir !== null && name.trim().length > 0 && !importing);
@@ -45,7 +50,7 @@
     name = "";
     loader = "vanilla";
     mcVersion = "";
-    memoryMb = 2048;
+    memoryMb = MEMORY_DEFAULT_MB;
     importing = false;
   }
 

@@ -146,14 +146,17 @@ pub async fn import_server(
         let already_known = registry
             .servers
             .iter()
-            .find(|server| server.dir == request.dir);
+            .find(|server| paths_match(&server.dir, &request.dir));
         if let Some(existing) = already_known {
             return Ok(existing.clone());
         }
     }
 
+    // A conservative default for a server imported without a memory figure —
+    // enough to boot a modest modpack, low enough not to starve the host.
+    const DEFAULT_IMPORT_MEMORY_MB: u32 = 2048;
     let memory_mb = if request.memory_mb == 0 {
-        2048
+        DEFAULT_IMPORT_MEMORY_MB
     } else {
         request.memory_mb
     };
@@ -593,10 +596,10 @@ async fn relocate_storage(
 /// trivial differences (trailing slash, case on Windows) don't cause a
 /// spurious "not default" reading; falls back to plain equality when either
 /// side can't be resolved (e.g. doesn't exist yet).
-fn paths_match(a: &Path, b: &Path) -> bool {
-    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => a == b,
+fn paths_match(left: &Path, right: &Path) -> bool {
+    match (std::fs::canonicalize(left), std::fs::canonicalize(right)) {
+        (Ok(canonical_left), Ok(canonical_right)) => canonical_left == canonical_right,
+        _ => left == right,
     }
 }
 

@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 use crate::installers::vanilla::{McVersion, SERVER_JAR_NAME};
-use crate::installers::{download_file, ExpectedChecksum, ProgressCallback};
+use crate::installers::{download_file, fetch_json, ExpectedChecksum, ProgressCallback};
 
 const MOHIST_API_BASE: &str = "https://mohistmc.com/api/v2/projects/mohist";
 
@@ -29,13 +29,7 @@ struct MohistBuild {
 }
 
 pub async fn list_versions(client: &reqwest::Client) -> AppResult<Vec<McVersion>> {
-    let project: MohistProject = client
-        .get(MOHIST_API_BASE)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let project: MohistProject = fetch_json(client, MOHIST_API_BASE).await?;
 
     let versions = project
         .versions
@@ -56,13 +50,8 @@ pub async fn install(
     server_dir: &Path,
     report_progress: &ProgressCallback,
 ) -> AppResult<()> {
-    let builds: MohistBuilds = client
-        .get(format!("{MOHIST_API_BASE}/{mc_version}/builds"))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let builds: MohistBuilds =
+        fetch_json(client, &format!("{MOHIST_API_BASE}/{mc_version}/builds")).await?;
     let latest_build = builds
         .builds
         .last()

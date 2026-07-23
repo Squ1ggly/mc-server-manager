@@ -5,7 +5,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
-use crate::installers::{download_file, ExpectedChecksum, ProgressCallback};
+use crate::installers::{download_file, fetch_json, ExpectedChecksum, ProgressCallback};
 
 const VERSION_MANIFEST_URL: &str =
     "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
@@ -84,13 +84,7 @@ pub async fn install(
         .find(|version| version.id == mc_version)
         .ok_or_else(|| AppError::UnknownMinecraftVersion(mc_version.to_string()))?;
 
-    let details: VersionDetails = client
-        .get(&manifest_entry.url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let details: VersionDetails = fetch_json(client, &manifest_entry.url).await?;
     let server_download = details
         .downloads
         .server
@@ -109,12 +103,6 @@ pub async fn install(
 }
 
 async fn fetch_manifest(client: &reqwest::Client) -> AppResult<VersionManifest> {
-    let manifest = client
-        .get(VERSION_MANIFEST_URL)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let manifest = fetch_json(client, VERSION_MANIFEST_URL).await?;
     Ok(manifest)
 }

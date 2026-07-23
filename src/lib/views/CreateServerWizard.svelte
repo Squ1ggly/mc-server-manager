@@ -34,6 +34,7 @@
   } from "@lucide/svelte";
   import { api, PROXY_LOADERS, type Loader, type McVersion } from "../ipc/api";
   import {
+    MEMORY_DEFAULT_MB,
     MEMORY_MAX_MB,
     MEMORY_MIN_MB,
     MEMORY_STEP_MB,
@@ -217,7 +218,7 @@
   let versions = $state<McVersion[]>([]);
   let versionsForLoader = $state<Loader | null>(null);
   let selectedVersion = $state("");
-  let memoryMb = $state(2048);
+  let memoryMb = $state(MEMORY_DEFAULT_MB);
   let port = $state(DEFAULT_GAME_PORT);
   let portTouched = $state(false);
   let acceptEula = $state(false);
@@ -364,7 +365,7 @@
     selectedCategory = null;
     name = "";
     acceptEula = false;
-    memoryMb = 2048;
+    memoryMb = MEMORY_DEFAULT_MB;
     portTouched = false;
     javaArgs = "";
     startCommand = "";

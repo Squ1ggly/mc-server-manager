@@ -139,9 +139,11 @@
     commandInput?.focus();
   }
 
-  /** Tab/Enter accept, arrows move, Escape dismisses without clearing the
-   *  box. Enter only completes when a suggestion is highlighted, so the
-   *  common case — typing a whole command and hitting Enter — still sends. */
+  /** Tab accepts the highlighted suggestion, arrows move the highlight, and
+   *  Escape dismisses the list without clearing the box. Enter is deliberately
+   *  left to the form's submit handler so it always sends — suggestions are
+   *  open on nearly every keystroke, so completing on Enter would make the
+   *  common case (type a command, hit Enter) impossible. */
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       suggestionsOpen = false;

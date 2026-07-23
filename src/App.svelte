@@ -113,6 +113,17 @@
     return found ?? null;
   });
 
+  // If the server behind the current route disappears by any path other than
+  // the delete flow (e.g. an external refresh), the "server" view would fall
+  // through to the Dashboard while the route still reads "server" — sidebar
+  // highlight lost, no real redirect. Normalize the route back home instead.
+  $effect(() => {
+    if (route.view === "server" && serversStore.loaded && selectedServer === null) {
+      unsavedEditsStore.clear();
+      route = { view: "home" };
+    }
+  });
+
   // --- Bulk actions -------------------------------------------------------
   let bulkBusy = $state(false);
 

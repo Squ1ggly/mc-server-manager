@@ -12,7 +12,10 @@
   let curseforgeApiKey = $state<string | null>(null);
 
   $effect(() => {
-    api.getCurseforgeApiKey().then((key) => (curseforgeApiKey = key));
+    api
+      .getCurseforgeApiKey()
+      .then((key) => (curseforgeApiKey = key))
+      .catch(() => (curseforgeApiKey = null));
   });
 
   function sourceBlocked(source: string): string | null {

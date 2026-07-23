@@ -18,4 +18,9 @@ describe("motd property encoding", () => {
     const editor = "§aLine one\n§cLine two";
     expect(decodeMotdProperty(encodeMotdProperty(editor))).toBe(editor);
   });
+
+  it("round-trips a literal backslash-n without turning it into a newline", () => {
+    const editor = "path C:\\new and a real\nnewline";
+    expect(decodeMotdProperty(encodeMotdProperty(editor))).toBe(editor);
+  });
 });

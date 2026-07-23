@@ -81,6 +81,44 @@ pub struct InstalledAddonVersion {
     pub version: AddonVersion,
 }
 
+/// Shared tail of every marketplace's `install`: create the target directory,
+/// download the file, and assemble the record. Only the file name, URL,
+/// checksum and version metadata differ between marketplaces.
+async fn finalize_install(
+    client: &reqwest::Client,
+    dir: &Path,
+    file_name: String,
+    download_url: &str,
+    checksum: ExpectedChecksum<'_>,
+    version: AddonVersion,
+    report_progress: &ProgressCallback,
+) -> AppResult<InstalledAddonVersion> {
+    std::fs::create_dir_all(dir)?;
+    let destination = dir.join(&file_name);
+    download_file(
+        client,
+        download_url,
+        &destination,
+        checksum,
+        report_progress,
+    )
+    .await?;
+
+    // The file was just written, so a failed metadata read is a real I/O error
+    // worth surfacing rather than silently reporting a zero-byte install.
+    let size_bytes = std::fs::metadata(&destination)?.len();
+    let installed = InstalledAddonVersion {
+        addon: InstalledAddon {
+            display_name: addons::display_name(&file_name),
+            enabled: true,
+            size_bytes,
+            file_name,
+        },
+        version,
+    };
+    Ok(installed)
+}
+
 // --- Modrinth -------------------------------------------------------------
 
 pub mod modrinth {
@@ -240,9 +278,6 @@ pub mod modrinth {
             .ok_or_else(|| AppError::Process("Modrinth version has no files".to_string()))?;
 
         let file_name = addons::safe_file_name(&file.filename)?.to_string();
-        std::fs::create_dir_all(dir)?;
-        let destination = dir.join(&file_name);
-
         let checksum = file
             .hashes
             .sha512
@@ -250,24 +285,21 @@ pub mod modrinth {
             .map(ExpectedChecksum::Sha512)
             .or_else(|| file.hashes.sha1.as_deref().map(ExpectedChecksum::Sha1))
             .unwrap_or(ExpectedChecksum::None);
+        let addon_version = AddonVersion {
+            version_id: version.id.clone(),
+            version_number: version.version_number.clone(),
+        };
 
-        download_file(client, &file.url, &destination, checksum, report_progress).await?;
-
-        let size_bytes = std::fs::metadata(&destination)
-            .map(|m| m.len())
-            .unwrap_or(0);
-        Ok(InstalledAddonVersion {
-            addon: InstalledAddon {
-                display_name: addons::display_name(&file_name),
-                enabled: true,
-                size_bytes,
-                file_name,
-            },
-            version: AddonVersion {
-                version_id: version.id,
-                version_number: version.version_number,
-            },
-        })
+        finalize_install(
+            client,
+            dir,
+            file_name,
+            &file.url,
+            checksum,
+            addon_version,
+            report_progress,
+        )
+        .await
     }
 }
 
@@ -406,33 +438,22 @@ pub mod spigot {
         let version = latest(client, resource_id).await?;
 
         let file_name = addons::sanitize_jar_name(&resource.name, resource_id);
-        std::fs::create_dir_all(dir)?;
-        let destination = dir.join(&file_name);
+        let download_url = format!("{SPIGET_API}/resources/{resource_id}/download");
+        let addon_version = AddonVersion {
+            version_id: version.id.to_string(),
+            version_number: version.name,
+        };
 
-        download_file(
+        finalize_install(
             client,
-            &format!("{SPIGET_API}/resources/{resource_id}/download"),
-            &destination,
+            dir,
+            file_name,
+            &download_url,
             ExpectedChecksum::None,
+            addon_version,
             report_progress,
         )
-        .await?;
-
-        let size_bytes = std::fs::metadata(&destination)
-            .map(|m| m.len())
-            .unwrap_or(0);
-        Ok(InstalledAddonVersion {
-            addon: InstalledAddon {
-                display_name: addons::display_name(&file_name),
-                enabled: true,
-                size_bytes,
-                file_name,
-            },
-            version: AddonVersion {
-                version_id: version.id.to_string(),
-                version_number: version.name,
-            },
-        })
+        .await
     }
 
     /// Percent-encodes a search term for use as a Spiget URL path segment.
@@ -642,33 +663,21 @@ pub mod curseforge {
         })?;
 
         let file_name = addons::safe_file_name(&file.file_name)?.to_string();
-        std::fs::create_dir_all(dir)?;
-        let destination = dir.join(&file_name);
+        let addon_version = AddonVersion {
+            version_id: file.id.to_string(),
+            version_number: file.display_name,
+        };
 
-        download_file(
+        finalize_install(
             client,
+            dir,
+            file_name,
             &download_url,
-            &destination,
             ExpectedChecksum::None,
+            addon_version,
             report_progress,
         )
-        .await?;
-
-        let size_bytes = std::fs::metadata(&destination)
-            .map(|m| m.len())
-            .unwrap_or(0);
-        Ok(InstalledAddonVersion {
-            addon: InstalledAddon {
-                display_name: addons::display_name(&file_name),
-                enabled: true,
-                size_bytes,
-                file_name,
-            },
-            version: AddonVersion {
-                version_id: file.id.to_string(),
-                version_number: file.display_name,
-            },
-        })
+        .await
     }
 }
 

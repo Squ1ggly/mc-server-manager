@@ -14,7 +14,7 @@
   import { api, type RosterEntry, type ServerConfig } from "../../ipc/api";
   import { serversStore } from "../../stores/servers.svelte";
   import { toastsStore } from "../../stores/toasts.svelte";
-  import { formatDateTime, formatUptime } from "../../util/format";
+  import { formatUptime } from "../../util/format";
   import { commandArg, commandText } from "../../ipc/commands";
   import { FEATURE_COLOR } from "../../util/features";
   import { textPromptStore } from "../../stores/textPrompt.svelte";

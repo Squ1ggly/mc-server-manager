@@ -20,6 +20,7 @@
   import { serverAddressStore } from "../../stores/serverAddress.svelte";
   import { serversStore } from "../../stores/servers.svelte";
   import { toastsStore } from "../../stores/toasts.svelte";
+  import { unsavedEditsStore } from "../../stores/unsavedEdits.svelte";
   import Button from "../../components/Button.svelte";
 
   interface Props {
@@ -225,33 +226,90 @@
     return "text";
   }
 
-  async function saveConfig() {
+  /** Parses a positive-int text field, treating blank/invalid/<1 as "unset". */
+  function parsePositiveIntOrNull(text: string): number | null {
+    const parsed = Number.parseInt(text, 10);
+    if (Number.isNaN(parsed) || parsed < 1) {
+      return null;
+    }
+    return parsed;
+  }
+
+  /** The config payload the form currently represents. */
+  function currentConfig() {
+    const payload = {
+      name: editedName,
+      memoryMb: editedMemoryMb,
+      javaPath: editedJavaPath === "" ? null : editedJavaPath,
+      backupsDir: editedBackupsDir,
+      javaArgs: editedJavaArgs.trim() === "" ? null : editedJavaArgs.trim(),
+      startCommand: editedStartCommand.trim() === "" ? null : editedStartCommand.trim(),
+      backupRetention: parsePositiveIntOrNull(editedRetention),
+      crashRestartLimit: parsePositiveIntOrNull(editedCrashRestartLimit),
+    };
+    return payload;
+  }
+
+  /** The same fields as they are saved on the server, to compare against. */
+  function savedConfig() {
+    const payload = {
+      name: server.name,
+      memoryMb: server.memoryMb,
+      javaPath: server.javaPath ?? null,
+      backupsDir: server.backupsDir,
+      javaArgs: server.javaArgs ?? null,
+      startCommand: server.startCommand ?? null,
+      backupRetention: server.backupRetention,
+      crashRestartLimit: server.crashRestartLimit,
+    };
+    return payload;
+  }
+
+  const configDirty = $derived(JSON.stringify(currentConfig()) !== JSON.stringify(savedConfig()));
+  const isDirty = $derived(configDirty || dirtyCount > 0);
+
+  // Publish the dirty state so navigating away (route or tab change) can offer
+  // to save first, and withdraw it on teardown.
+  $effect(() => {
+    if (!isDirty) {
+      unsavedEditsStore.clear();
+      return;
+    }
+    unsavedEditsStore.register({
+      description: "this server's settings",
+      save: saveAll,
+    });
+    return () => unsavedEditsStore.clear();
+  });
+
+  /** Saves whichever of the two sections have pending changes. */
+  async function saveAll(): Promise<boolean> {
+    let allSaved = true;
+    if (configDirty) {
+      allSaved = (await saveConfig()) && allSaved;
+    }
+    if (dirtyCount > 0) {
+      allSaved = (await saveProperties()) && allSaved;
+    }
+    return allSaved;
+  }
+
+  async function saveConfig(): Promise<boolean> {
     savingConfig = true;
     try {
-      const retentionNumber = Number.parseInt(editedRetention, 10);
-      const crashRestartNumber = Number.parseInt(editedCrashRestartLimit, 10);
-      await api.updateServer(server.id, {
-        name: editedName,
-        memoryMb: editedMemoryMb,
-        javaPath: editedJavaPath === "" ? null : editedJavaPath,
-        backupsDir: editedBackupsDir,
-        javaArgs: editedJavaArgs.trim() === "" ? null : editedJavaArgs.trim(),
-        startCommand: editedStartCommand.trim() === "" ? null : editedStartCommand.trim(),
-        backupRetention:
-          Number.isNaN(retentionNumber) || retentionNumber < 1 ? null : retentionNumber,
-        crashRestartLimit:
-          Number.isNaN(crashRestartNumber) || crashRestartNumber < 1 ? null : crashRestartNumber,
-      });
+      await api.updateServer(server.id, currentConfig());
       await serversStore.refresh();
       toastsStore.success("Server settings saved");
+      return true;
     } catch (error) {
       toastsStore.error(String(error));
+      return false;
     } finally {
       savingConfig = false;
     }
   }
 
-  async function saveProperties() {
+  async function saveProperties(): Promise<boolean> {
     savingProperties = true;
     try {
       const updates: Property[] = Object.entries(edited).map(([key, value]) => ({ key, value }));
@@ -260,8 +318,10 @@
       serverAddressStore.markChanged(server.id);
       await loadProperties(server.id);
       toastsStore.success("server.properties saved — restart to apply");
+      return true;
     } catch (error) {
       toastsStore.error(String(error));
+      return false;
     } finally {
       savingProperties = false;
     }

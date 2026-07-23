@@ -90,7 +90,10 @@ pub async fn restart_after_crash(app: &AppHandle, server_id: &str) {
         return;
     }
 
-    if let Err(error) = start_server(app, server_id).await {
+    // Deliberately NOT start_server: an automatic restart must not clear the
+    // crash streak, or the counter resets every attempt and the cap above is
+    // never reached. Only a start the user (or a schedule) asks for resets it.
+    if let Err(error) = launch_server(app, server_id).await {
         process::announce(
             app,
             server_id,
@@ -160,13 +163,22 @@ pub async fn find_port_conflict(
 
 pub async fn start_server(app: &AppHandle, server_id: &str) -> AppResult<()> {
     // A start the user asked for ends any crash streak, so a server fixed by
-    // hand gets its full allowance again.
+    // hand gets its full allowance again. The crash-restart path calls
+    // launch_server directly to keep the streak intact.
     app.state::<AppState>()
         .crash_restarts
         .lock()
         .await
         .remove(server_id);
 
+    launch_server(app, server_id).await
+}
+
+/// Launches the server process without touching the crash-restart streak.
+///
+/// Shared by the user-facing `start_server` (which clears the streak first)
+/// and the automatic crash-restart path (which must not).
+async fn launch_server(app: &AppHandle, server_id: &str) -> AppResult<()> {
     // Enforced here, not only in the UI: scheduled and bulk starts reach this
     // path too, and none of them should be able to launch a doomed process.
     if let Some(conflict) = find_port_conflict(app, server_id).await? {

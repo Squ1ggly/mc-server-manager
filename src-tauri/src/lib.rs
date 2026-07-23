@@ -24,7 +24,7 @@ pub fn run() {
         default_panic(info);
     }));
 
-    tauri::Builder::default()
+    let build_result = tauri::Builder::default()
         .plugin(
             // Rolling log file in the OS log dir, plus stdout during dev.
             tauri_plugin_log::Builder::new()
@@ -144,28 +144,38 @@ pub fn run() {
             commands::run_task_now,
             commands::preview_next_run,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|app_handle, event| {
-            // `code` is `Some` only when we requested the exit ourselves (the
-            // `app_handle.exit(0)` below); skip re-entering cleanup for that one.
-            if let tauri::RunEvent::ExitRequested {
-                api, code: None, ..
-            } = event
-            {
-                api.prevent_exit();
-                // Stop auto-restarts before anything is torn down, or a
-                // server going down on the way out gets resurrected into an
-                // orphan process the app no longer owns.
-                app_handle
-                    .state::<servers::state::AppState>()
-                    .shutting_down
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-                let app_handle = app_handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    commands::close_all_port_forwards(&app_handle).await;
-                    app_handle.exit(0);
-                });
-            }
-        });
+        .build(tauri::generate_context!());
+
+    // Building the app is the launch boundary; if it fails there is nothing to
+    // run, so log the cause and exit rather than panic with a bare backtrace.
+    let app = match build_result {
+        Ok(app) => app,
+        Err(error) => {
+            log::error!("failed to build the application: {error}");
+            std::process::exit(1);
+        }
+    };
+
+    app.run(|app_handle, event| {
+        // `code` is `Some` only when we requested the exit ourselves (the
+        // `app_handle.exit(0)` below); skip re-entering cleanup for that one.
+        if let tauri::RunEvent::ExitRequested {
+            api, code: None, ..
+        } = event
+        {
+            api.prevent_exit();
+            // Stop auto-restarts before anything is torn down, or a
+            // server going down on the way out gets resurrected into an
+            // orphan process the app no longer owns.
+            app_handle
+                .state::<servers::state::AppState>()
+                .shutting_down
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            let app_handle = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                commands::close_all_port_forwards(&app_handle).await;
+                app_handle.exit(0);
+            });
+        }
+    });
 }

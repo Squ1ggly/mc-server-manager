@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection, OptionalExtension};
 use tauri::{AppHandle, Manager};
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// The database file name, inside whichever directory it currently lives in.
 pub const DB_FILE_NAME: &str = "blockparty.db";
@@ -150,6 +150,10 @@ impl Db {
     // --- plugin/mod install tracking ---------------------------------------
 
     pub fn record_plugin_install(&self, record: &PluginInstallRecord) -> AppResult<()> {
+        // SQLite integers are signed; a unix-seconds timestamp always fits, but
+        // convert explicitly rather than truncate with `as`.
+        let installed_at_unix = i64::try_from(record.installed_at_unix)
+            .map_err(|_| AppError::InvalidInput("install timestamp out of range".to_string()))?;
         self.conn.execute(
             "INSERT INTO plugin_installs
                 (server_id, file_name, source, project_id, version_id, version_number,
@@ -172,7 +176,7 @@ impl Db {
                 record.version_number,
                 record.mc_version,
                 record.loader_facet,
-                record.installed_at_unix as i64,
+                installed_at_unix,
             ],
         )?;
         Ok(())
@@ -194,7 +198,7 @@ impl Db {
                 version_number: row.get(5)?,
                 mc_version: row.get(6)?,
                 loader_facet: row.get(7)?,
-                installed_at_unix: row.get::<_, i64>(8)? as u64,
+                installed_at_unix: u64::try_from(row.get::<_, i64>(8)?).unwrap_or(0),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)

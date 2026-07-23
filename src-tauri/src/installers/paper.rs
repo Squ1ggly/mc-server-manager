@@ -9,7 +9,7 @@ use serde::Deserialize;
 use crate::error::{AppError, AppResult};
 use crate::installers::forgelike::sort_minecraft_versions_desc;
 use crate::installers::vanilla::{McVersion, SERVER_JAR_NAME};
-use crate::installers::{download_file, ExpectedChecksum, ProgressCallback};
+use crate::installers::{download_file, fetch_json, ExpectedChecksum, ProgressCallback};
 use crate::servers::Loader;
 
 const FILL_API_BASE: &str = "https://fill.papermc.io/v3/projects";
@@ -55,13 +55,7 @@ fn project_slug(loader: Loader) -> AppResult<&'static str> {
 pub async fn list_versions(client: &reqwest::Client, loader: Loader) -> AppResult<Vec<McVersion>> {
     let slug = project_slug(loader)?;
     let url = format!("{FILL_API_BASE}/{slug}");
-    let project: FillProject = client
-        .get(&url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let project: FillProject = fetch_json(client, &url).await?;
 
     let mut ids: Vec<String> = project.versions.into_values().flatten().collect();
     sort_minecraft_versions_desc(&mut ids);
@@ -94,13 +88,7 @@ pub async fn install(
 ) -> AppResult<()> {
     let slug = project_slug(loader)?;
     let builds_url = format!("{FILL_API_BASE}/{slug}/versions/{version}/builds");
-    let builds: Vec<FillBuild> = client
-        .get(&builds_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let builds: Vec<FillBuild> = fetch_json(client, &builds_url).await?;
 
     // Builds are newest-first; prefer a stable/recommended channel.
     let chosen = builds

@@ -25,10 +25,13 @@
     if (series.length < 2) {
       return "";
     }
+    // A zero or negative scale would divide to NaN and blank the path; fall
+    // back to 1 so the line still renders (flat) instead of disappearing.
+    const safeTop = top > 0 ? top : 1;
     const step = VIEW_WIDTH / (series.length - 1);
     const coordinates = series.map((value, index) => {
       const x = (index * step).toFixed(1);
-      const clamped = Math.min(Math.max(value / top, 0), 1);
+      const clamped = Math.min(Math.max(value / safeTop, 0), 1);
       const y = (height - clamped * (height - 4)).toFixed(1);
       return `${x},${y}`;
     });

@@ -22,6 +22,7 @@
   import { serversStore } from "../stores/servers.svelte";
   import { startServerWithPortCheck } from "../util/startServer";
   import { toastsStore } from "../stores/toasts.svelte";
+  import { unsavedEditsStore } from "../stores/unsavedEdits.svelte";
   import StatusBlob from "../components/StatusBlob.svelte";
   import Button from "../components/Button.svelte";
   import Chip from "../components/Chip.svelte";
@@ -88,6 +89,20 @@
   // during render means the wrong tab is never mounted at all.
   const activeTab = $derived(resolveActiveTab(selectedTab, tabs));
 
+  /** Switches tabs, offering to save first if the current tab has edits — a
+   *  tab change tears the active tab's component down just like leaving the
+   *  page does. */
+  async function switchTab(nextTab: TabId) {
+    if (nextTab === selectedTab) {
+      return;
+    }
+    const mayLeave = await unsavedEditsStore.confirmLeave();
+    if (!mayLeave) {
+      return;
+    }
+    selectedTab = nextTab;
+  }
+
   const status = $derived(serversStore.statusOf(server.id));
   const canStart = $derived(status === "stopped" || status === "crashed");
   const canStop = $derived(status === "running" || status === "starting");
@@ -105,6 +120,10 @@
 
   async function deleteServer() {
     const deletedName = server.name;
+    // The server (and any file being edited inside it) is about to be gone, so
+    // drop the unsaved record — offering to save into a deleted folder on the
+    // way out would be nonsense.
+    unsavedEditsStore.clear();
     await run(async () => {
       await api.deleteServer(server.id);
       // Leave this view before the refresh drops the server from the list,
@@ -171,7 +190,7 @@
       <button
         class="tab"
         class:active={activeTab === tab.id}
-        onclick={() => (selectedTab = tab.id)}
+        onclick={() => switchTab(tab.id)}
       >
         <tab.icon size={16} color={FEATURE_COLOR[tab.id]} />
         {tab.label}

@@ -21,6 +21,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { api, type AppSettings, type JavaInstall, type StorageLocation } from "../ipc/api";
   import { toastsStore } from "../stores/toasts.svelte";
+  import { unsavedEditsStore } from "../stores/unsavedEdits.svelte";
   import Button from "../components/Button.svelte";
 
   const THEME_OPTIONS: { preference: ThemePreference; label: string; icon: typeof Sun }[] = [
@@ -55,6 +56,8 @@
   let movingStorage = $state(false);
 
   let curseforgeApiKey = $state("");
+  /** The key as last loaded/saved, so an edited-but-unsaved key is detectable. */
+  let savedCurseforgeApiKey = $state("");
   let savingCurseforgeKey = $state(false);
 
   $effect(() => {
@@ -64,21 +67,41 @@
     loadCurseforgeApiKey();
   });
 
+  // The only draft on this page: everything else (base dir, storage location,
+  // theme) applies the moment it's chosen. Offer to save the key on the way out.
+  const curseforgeKeyDirty = $derived(curseforgeApiKey !== savedCurseforgeApiKey);
+  $effect(() => {
+    if (!curseforgeKeyDirty) {
+      unsavedEditsStore.clear();
+      return;
+    }
+    unsavedEditsStore.register({
+      description: "the CurseForge API key",
+      save: saveCurseforgeApiKey,
+    });
+    return () => unsavedEditsStore.clear();
+  });
+
   async function loadCurseforgeApiKey() {
     try {
-      curseforgeApiKey = (await api.getCurseforgeApiKey()) ?? "";
+      const key = (await api.getCurseforgeApiKey()) ?? "";
+      curseforgeApiKey = key;
+      savedCurseforgeApiKey = key;
     } catch (error) {
       toastsStore.error(String(error));
     }
   }
 
-  async function saveCurseforgeApiKey() {
+  async function saveCurseforgeApiKey(): Promise<boolean> {
     savingCurseforgeKey = true;
     try {
       await api.setCurseforgeApiKey(curseforgeApiKey);
+      savedCurseforgeApiKey = curseforgeApiKey;
       toastsStore.success("CurseForge API key saved");
+      return true;
     } catch (error) {
       toastsStore.error(String(error));
+      return false;
     } finally {
       savingCurseforgeKey = false;
     }

@@ -88,8 +88,8 @@ export function parseMotdLine(text: string): MotdSpan[] {
     } else if (code === "k") {
       current.obfuscated = true;
     } else if (code === "r") {
-      current = { ...blankSpan(), color: current.color };
-      current.color = undefined;
+      // Full reset — a fresh span with no color and no formatting.
+      current = blankSpan();
     }
   }
 
@@ -102,15 +102,49 @@ export function parseMotd(text: string): MotdSpan[][] {
   return text.split("\n").map(parseMotdLine);
 }
 
-/** server.properties form (§ escapes, literal \n) -> editor form. */
+/** server.properties form (§ escapes, literal \n) -> editor form.
+ *
+ * Single-pass so escapes are unambiguous: `\\` is a literal backslash and only
+ * an unescaped `\` introduces `\n` or `§`. A sequential replaceAll can't
+ * do this correctly — it would turn a literal `\n` the user typed into a real
+ * newline. */
 export function decodeMotdProperty(stored: string): string {
-  return stored
-    .replaceAll("\\u00A7", "§")
-    .replaceAll("\\u00a7", "§")
-    .replaceAll("\\n", "\n");
+  let decoded = "";
+  let index = 0;
+  while (index < stored.length) {
+    const char = stored[index];
+    if (char !== "\\") {
+      decoded += char;
+      index += 1;
+      continue;
+    }
+
+    const next = stored[index + 1];
+    const isSectionEscape = next === "u" && stored.slice(index + 2, index + 6).toLowerCase() === "00a7";
+    if (isSectionEscape) {
+      decoded += "§";
+      index += 6;
+    } else if (next === "n") {
+      decoded += "\n";
+      index += 2;
+    } else if (next === "\\") {
+      decoded += "\\";
+      index += 2;
+    } else {
+      // Unknown escape — keep the backslash as-is.
+      decoded += char;
+      index += 1;
+    }
+  }
+  return decoded;
 }
 
-/** Editor form -> server.properties form. */
+/** Editor form -> server.properties form. Backslashes are escaped first so a
+ *  literal `\` the user typed survives the round-trip through decode. */
 export function encodeMotdProperty(editorText: string): string {
-  return editorText.replaceAll("§", "\\u00A7").replaceAll("\n", "\\n");
+  const encoded = editorText
+    .replaceAll("\\", "\\\\")
+    .replaceAll("§", "\\u00A7")
+    .replaceAll("\n", "\\n");
+  return encoded;
 }

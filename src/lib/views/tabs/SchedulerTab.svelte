@@ -3,6 +3,7 @@
   import { createIntroFade } from "../../util/transitions";
   import { api, type ScheduledTask, type ServerConfig, type TaskAction } from "../../ipc/api";
   import { toastsStore } from "../../stores/toasts.svelte";
+  import { unsavedEditsStore } from "../../stores/unsavedEdits.svelte";
   import { formatDateTime } from "../../util/format";
   import { FEATURE_COLOR } from "../../util/features";
   import Button from "../../components/Button.svelte";
@@ -49,6 +50,37 @@
   const myTasks = $derived(tasks.filter((task) => task.serverId === server.id));
   const effectiveCron = $derived(formPreset === "custom" ? formCustomCron : formPreset);
 
+  // A fingerprint of the form as it was when opened, so "dirty" means the user
+  // actually changed something rather than just opening the editor.
+  let formSnapshot = $state("");
+  function formFingerprint(): string {
+    const fingerprint = JSON.stringify({
+      formName,
+      formPreset,
+      formCustomCron,
+      formActionKind,
+      formCommand,
+      formEnabled,
+    });
+    return fingerprint;
+  }
+
+  const formDirty = $derived(editing && formFingerprint() !== formSnapshot);
+
+  // Publish the dirty state so navigating away (route or tab change) can offer
+  // to save the task first, and withdraw it on teardown.
+  $effect(() => {
+    if (!formDirty) {
+      unsavedEditsStore.clear();
+      return;
+    }
+    unsavedEditsStore.register({
+      description: "the scheduled task",
+      save: persistTask,
+    });
+    return () => unsavedEditsStore.clear();
+  });
+
   $effect(() => {
     loadTasks();
   });
@@ -87,6 +119,7 @@
     formCommand = "";
     formEnabled = true;
     editing = true;
+    formSnapshot = formFingerprint();
   }
 
   function startEdit(task: ScheduledTask) {
@@ -99,6 +132,7 @@
     formCommand = task.action.type === "command" ? task.action.command : "";
     formEnabled = task.enabled;
     editing = true;
+    formSnapshot = formFingerprint();
   }
 
   function buildAction(): TaskAction {
@@ -110,9 +144,15 @@
 
   async function saveTask(event: SubmitEvent) {
     event.preventDefault();
+    await persistTask();
+  }
+
+  /** Validates and saves the open task form. Resolves `false` when the input
+   *  is rejected or the save fails, so an unsaved-changes prompt can stay put. */
+  async function persistTask(): Promise<boolean> {
     if (formActionKind === "command" && formCommand.trim() === "") {
       toastsStore.show("The task needs a command to run");
-      return;
+      return false;
     }
     saving = true;
     try {
@@ -127,8 +167,10 @@
       toastsStore.success("Task scheduled");
       editing = false;
       await loadTasks();
+      return true;
     } catch (error) {
       toastsStore.error(String(error));
+      return false;
     } finally {
       saving = false;
     }

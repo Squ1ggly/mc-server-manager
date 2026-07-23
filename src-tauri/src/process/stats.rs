@@ -70,7 +70,7 @@ async fn sample_once(app: &AppHandle, running: &RunningMap, system: &mut System,
 fn available_core_count() -> u32 {
     let parallelism = std::thread::available_parallelism();
     match parallelism {
-        Ok(count) => count.get() as u32,
+        Ok(count) => u32::try_from(count.get()).unwrap_or(1),
         Err(_) => 1,
     }
 }

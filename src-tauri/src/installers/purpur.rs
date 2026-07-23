@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::error::AppResult;
 use crate::installers::vanilla::{McVersion, SERVER_JAR_NAME};
-use crate::installers::{download_file, ExpectedChecksum, ProgressCallback};
+use crate::installers::{download_file, fetch_json, ExpectedChecksum, ProgressCallback};
 
 const PURPUR_API_BASE: &str = "https://api.purpurmc.org/v2/purpur";
 
@@ -18,13 +18,7 @@ struct PurpurVersions {
 
 /// Versions Purpur supports, newest first.
 pub async fn list_versions(client: &reqwest::Client) -> AppResult<Vec<McVersion>> {
-    let listing: PurpurVersions = client
-        .get(PURPUR_API_BASE)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let listing: PurpurVersions = fetch_json(client, PURPUR_API_BASE).await?;
 
     let versions = listing
         .versions

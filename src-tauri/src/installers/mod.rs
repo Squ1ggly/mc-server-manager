@@ -124,12 +124,25 @@ pub(crate) async fn run_java_tool(
 }
 
 use futures_util::StreamExt;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha1::Digest as Sha1Digest;
 use sha1::Sha1;
 use sha2::digest::Digest as Sha256Digest;
 use sha2::{Sha256, Sha512};
 use tokio::io::AsyncWriteExt;
+
+/// GETs `url` and deserializes the JSON body, failing on any non-success
+/// status. Every installer's version/build lookup goes through here so the
+/// request-and-decode chain lives in one place.
+pub(crate) async fn fetch_json<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    url: &str,
+) -> AppResult<T> {
+    let response = client.get(url).send().await?.error_for_status()?;
+    let parsed = response.json().await?;
+    Ok(parsed)
+}
 
 /// Which checksum a download is verified against. `None` is for sources
 /// that publish no hash (HTTPS is the only integrity check there).

@@ -7,7 +7,9 @@ use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 use crate::installers::vanilla::McVersion;
-use crate::installers::{download_file, fetch_maven_checksum, run_java_tool, ProgressCallback};
+use crate::installers::{
+    download_file, fetch_json, fetch_maven_checksum, run_java_tool, ProgressCallback,
+};
 
 const QUILT_META_BASE: &str = "https://meta.quiltmc.org/v3/versions";
 
@@ -26,13 +28,8 @@ struct InstallerVersion {
 
 /// Game versions Quilt supports, newest first.
 pub async fn list_versions(client: &reqwest::Client) -> AppResult<Vec<McVersion>> {
-    let game_versions: Vec<GameVersion> = client
-        .get(format!("{QUILT_META_BASE}/game"))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let game_versions: Vec<GameVersion> =
+        fetch_json(client, &format!("{QUILT_META_BASE}/game")).await?;
 
     let versions = game_versions
         .into_iter()
@@ -52,13 +49,8 @@ pub async fn install(
     java_executable: &Path,
     report_progress: &ProgressCallback,
 ) -> AppResult<()> {
-    let installers: Vec<InstallerVersion> = client
-        .get(format!("{QUILT_META_BASE}/installer"))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let installers: Vec<InstallerVersion> =
+        fetch_json(client, &format!("{QUILT_META_BASE}/installer")).await?;
     let newest_installer = installers
         .first()
         .ok_or_else(|| AppError::Process("no Quilt installer available".to_string()))?;

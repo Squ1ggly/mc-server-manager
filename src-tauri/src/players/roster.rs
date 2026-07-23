@@ -281,7 +281,9 @@ impl RosterStore {
             let loaded = self.load_from_db(server_id).await;
             rosters.insert(server_id.to_string(), loaded);
         }
-        rosters.get_mut(server_id).expect("just inserted")
+        // Guaranteed present after the load above; or_default never constructs
+        // a new roster here, and this avoids an unwrap/expect on the lookup.
+        rosters.entry(server_id.to_string()).or_default()
     }
 
     async fn load_from_db(&self, server_id: &str) -> Roster {

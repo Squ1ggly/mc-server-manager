@@ -1,42 +1,73 @@
 // Tracks in-progress edits that navigating away would throw away.
 //
-// The file editor lives several components deep and is destroyed outright when
-// the selected server changes, so it can't intercept that itself. It registers
-// what's unsaved here instead, and the one place navigation happens asks
-// before going anywhere.
+// Editors live several components deep and are destroyed outright when the
+// route or the selected tab changes, so they can't intercept that themselves.
+// Each registers what's unsaved — and how to save it — here instead, and every
+// place navigation happens asks before going anywhere.
 
 import { confirmStore } from "./confirm.svelte";
 
-class UnsavedEditsStore {
-  /** What is currently unsaved (e.g. a file name), or null when nothing is. */
-  description = $state<string | null>(null);
+export interface UnsavedGuard {
+  /** What is unsaved, woven into the prompt — e.g. "the file server.properties"
+   *  or "this server's settings". */
+  description: string;
+  /** Persists the pending edits. Resolves `true` once saved, or `false` when
+   *  the save failed (the page surfaces its own error). A failed save cancels
+   *  the navigation so nothing is lost. */
+  save: () => Promise<boolean>;
+}
 
-  /** Called by an editor as its content diverges from what's on disk. */
-  set(description: string | null): void {
-    this.description = description;
+class UnsavedEditsStore {
+  private guard = $state<UnsavedGuard | null>(null);
+
+  /** Whether an editor currently has unsaved changes. */
+  get hasUnsaved(): boolean {
+    return this.guard !== null;
   }
 
-  /** Drops the record without asking — for when the edits were saved, or the
-   *  user already agreed to discard them. */
+  /** Called by an editor while its content diverges from what's saved. */
+  register(guard: UnsavedGuard): void {
+    this.guard = guard;
+  }
+
+  /** Drops the record without asking — after a save, an agreed discard, or
+   *  when the editor is torn down. */
   clear(): void {
-    this.description = null;
+    this.guard = null;
   }
 
   /**
-   * Whether it's safe to navigate away, asking the user when it isn't.
-   * Clears the record once they agree, so a second prompt can't stack up.
+   * Whether it's safe to navigate away, blocking on a Save / Don't save /
+   * Cancel prompt when there are unsaved edits. Save persists them (staying
+   * put if that fails), Don't save discards them, Cancel aborts the move.
    */
   async confirmLeave(): Promise<boolean> {
-    if (this.description === null) {
+    const guard = this.guard;
+    if (guard === null) {
       return true;
     }
+
     const choice = await confirmStore.ask({
-      title: "Discard unsaved changes?",
-      body: `You've edited ${this.description} without saving. Leaving now throws those changes away.`,
-      confirmLabel: "Discard changes",
-      variant: "danger",
+      title: "Unsaved changes",
+      body: `You've made changes to ${guard.description} that haven't been saved yet.`,
+      confirmLabel: "Save",
+      variant: "primary",
+      secondaryLabel: "Don't save",
+      secondaryVariant: "danger",
     });
-    if (choice !== "confirm") {
+
+    if (choice === "cancel") {
+      return false;
+    }
+    if (choice === "secondary") {
+      this.clear();
+      return true;
+    }
+
+    const saved = await guard.save();
+    if (!saved) {
+      // The save failed (the page has already shown why) — stay put so the
+      // edits aren't thrown away.
       return false;
     }
     this.clear();

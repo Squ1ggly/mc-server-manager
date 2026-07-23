@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 use crate::installers::vanilla::{McVersion, SERVER_JAR_NAME};
-use crate::installers::{download_file, ExpectedChecksum, ProgressCallback};
+use crate::installers::{download_file, fetch_json, ExpectedChecksum, ProgressCallback};
 
 const FABRIC_META_BASE: &str = "https://meta.fabricmc.net/v2/versions";
 
@@ -25,13 +25,8 @@ struct ToolVersion {
 
 /// Game versions Fabric supports, newest first (snapshots marked as such).
 pub async fn list_versions(client: &reqwest::Client) -> AppResult<Vec<McVersion>> {
-    let game_versions: Vec<GameVersion> = client
-        .get(format!("{FABRIC_META_BASE}/game"))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let game_versions: Vec<GameVersion> =
+        fetch_json(client, &format!("{FABRIC_META_BASE}/game")).await?;
 
     let versions = game_versions
         .into_iter()
@@ -70,13 +65,7 @@ pub async fn install(
 }
 
 async fn latest_stable(client: &reqwest::Client, tool: &str) -> AppResult<String> {
-    let tools: Vec<ToolVersion> = client
-        .get(format!("{FABRIC_META_BASE}/{tool}"))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let tools: Vec<ToolVersion> = fetch_json(client, &format!("{FABRIC_META_BASE}/{tool}")).await?;
 
     let newest_stable = tools.into_iter().find(|entry| entry.stable);
     let found = newest_stable
